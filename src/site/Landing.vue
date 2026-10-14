@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   ArrowRight, Cloud, LayoutGrid, Palette, ShieldCheck, Sparkles, Wand2
 } from 'lucide-vue-next'
 import { siDiscord, siFirefoxbrowser, siGithub, siGooglechrome } from 'simple-icons'
 import AnimatedWallpaper from '@/components/AnimatedWallpaper.vue'
 import BrandIcon from '@/components/BrandIcon.vue'
-import { CHROME_STORE_URL, DISCORD_URL, FIREFOX_STORE_URL, GITHUB_URL } from '@/config'
+import {
+  CHROME_STORE_URL, DISCORD_URL, FIREFOX_STORE_URL, GITHUB_URL, STATS_MIN_RATINGS, STATS_MIN_USERS
+} from '@/config'
 import { findWallpaper } from '@/lib/wallpapers'
 import logo from '@/assets/logo.svg'
 import shotPage from '../../store/screenshots/1-new-tab.png'
@@ -42,6 +44,40 @@ const SHOTS = [
 ]
 
 const active = ref(0)
+
+/**
+ * Store numbers, refreshed daily by scripts/fetch-stats.mjs during the deploy. Any of them
+ * may be null (not public yet, or not readable), and the line stays hidden until there's
+ * something worth showing.
+ */
+interface StoreStats { users: number | null; plus: boolean; rating: number | null; ratings: number | null }
+const stats = ref<{ chrome: StoreStats; firefox: StoreStats } | null>(null)
+
+onMounted(async () => {
+  try {
+    const res = await fetch('./stats.json', { cache: 'no-cache' })
+    if (res.ok) stats.value = await res.json()
+  } catch {
+    // No numbers is fine: the line just doesn't show.
+  }
+})
+
+/** "1,234" users becomes "1,200+", so the number reads as an honest floor rather than a live counter. */
+const formatUsers = (n: number) =>
+  n >= 1000 ? `${(Math.floor(n / 100) * 100).toLocaleString('en')}+` : n.toLocaleString('en')
+
+const usage = computed(() => {
+  if (!stats.value) return null
+  const stores = [stats.value.chrome, stats.value.firefox].filter(Boolean)
+  const users = stores.reduce((sum, s) => sum + (s.users ?? 0), 0)
+  if (users < STATS_MIN_USERS) return null
+  const rated = stores.filter(s => s.rating != null && (s.ratings ?? 0) > 0)
+  const ratings = rated.reduce((sum, s) => sum + (s.ratings ?? 0), 0)
+  const rating = ratings >= STATS_MIN_RATINGS
+    ? Math.round((rated.reduce((sum, s) => sum + (s.rating ?? 0) * (s.ratings ?? 0), 0) / ratings) * 10) / 10
+    : null
+  return { users: formatUsers(users), rating, ratings }
+})
 </script>
 
 <template>
@@ -98,6 +134,15 @@ const active = ref(0)
             </span>
           </template>
         </div>
+        <p v-if="usage" class="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-white/75">
+          <span v-if="usage.rating" class="flex items-center gap-1.5">
+            <span class="text-amber-300" aria-hidden="true">★</span>
+            <span class="font-semibold text-white">{{ usage.rating.toFixed(1) }}</span>
+            <span class="text-white/50">({{ usage.ratings.toLocaleString('en') }} ratings)</span>
+          </span>
+          <span v-if="usage.rating" class="text-white/30" aria-hidden="true">·</span>
+          <span><span class="font-semibold text-white">{{ usage.users }}</span> people use Tabscape</span>
+        </p>
         <p class="mt-4 text-sm text-white/50">
           Free for Chrome and Firefox. Works in Edge, Brave and Opera too.
         </p>

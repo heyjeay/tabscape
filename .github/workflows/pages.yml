@@ -3,6 +3,9 @@ name: Deploy the website
 on:
   push:
     branches: [master]
+  # Daily, so the user count and rating on the website stay current.
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -25,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:site
+      - name: Fetch store stats
+        run: node scripts/fetch-stats.mjs dist-site/stats.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

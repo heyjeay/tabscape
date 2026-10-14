@@ -5,6 +5,11 @@ export const debug = false
 export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/tabscape/lcfglngeemnollbmimbfjmlifgbhiclk'
 export const FIREFOX_STORE_URL = ''
 
+/** The website shows how many people use Tabscape only from this many, across both stores. */
+export const STATS_MIN_USERS = 100
+/** ...and the star rating only once it rests on at least this many ratings. */
+export const STATS_MIN_RATINGS = 3
+
 /** The source, where people contribute through pull requests. */
 export const GITHUB_URL = 'https://github.com/heyjeay/tabscape'
 
