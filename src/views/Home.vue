@@ -42,7 +42,7 @@ const ordinal = (n: number) =>
 
 const greeting = computed(() => {
   const hour = now.value.getHours()
-     const part = hour >= 22 || hour < 5 ? 'Night' : hour >= 5 && hour < 12 ? 'Morning' : hour >= 12 && hour < 18 ? 'Afternoon' : 'Evening'
+  const part = hour >= 22 || hour < 5 ? 'Night' : hour >= 5 && hour < 12 ? 'Morning' : hour >= 12 && hour < 18 ? 'Afternoon' : 'Evening'
   const name = settings.name.trim()
   return `Good ${part}${name ? `, ${name}` : ''}.`
 })
