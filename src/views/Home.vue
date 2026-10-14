@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, Pencil, Plus, Search } from 'lucide-vue-next'
 import LinkSection from '@/components/LinkSection.vue'
 import CustomizePanel from '@/components/CustomizePanel.vue'
@@ -12,6 +12,20 @@ const settings = state.settings
 const now = useNow()
 
 const editing = ref(false)
+const searchInput = ref<HTMLInputElement | null>(null)
+
+const focusSearchOnSlash = (event: KeyboardEvent) => {
+  if (event.key !== '/' || !settings.search) return
+
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return
+
+  event.preventDefault()
+  searchInput.value?.focus()
+}
+
+onMounted(() => window.addEventListener('keydown', focusSearchOnSlash))
+onBeforeUnmount(() => window.removeEventListener('keydown', focusSearchOnSlash))
 
 /** Where the block sits. Editing always works from the top, so the cards don't jump as they grow. */
 const ALIGN: Record<Position, string> = {
@@ -98,6 +112,7 @@ const newSection = async () => {
       <label class="flex w-full max-w-xl items-center gap-3 rounded-full bg-white/10 px-5 py-3 ring-1 ring-white/15 backdrop-blur-md transition focus-within:bg-white/15 focus-within:ring-white/35">
         <Search :size="18" class="shrink-0 text-white/60" />
         <input
+          ref="searchInput"
           v-model="query"
           class="w-full bg-transparent text-white outline-none placeholder:text-white/45"
           placeholder="Search the web"
