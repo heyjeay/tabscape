@@ -2,7 +2,7 @@
 export const debug = false
 
 /** Tabscape's store pages, once each is approved. An empty one shows as "coming soon" on the website. */
-export const CHROME_STORE_URL = ''
+export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/tabscape/lcfglngeemnollbmimbfjmlifgbhiclk'
 export const FIREFOX_STORE_URL = ''
 
 /** The source, where people contribute through pull requests. */
