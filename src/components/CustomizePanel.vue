@@ -189,6 +189,10 @@ const reset = () => {
             <span class="text-white/70">Date</span>
             <input v-model="settings.date" type="checkbox" class="switch">
           </label>
+          <label v-if="settings.date" class="flex cursor-pointer items-center justify-between">
+            <span class="text-white/70">Show weekday</span>
+            <input v-model="settings.weekday" type="checkbox" class="switch">
+          </label>
 
           <label class="flex items-center justify-between">
             <span class="text-white/70">Clock</span>

@@ -32,6 +32,8 @@ export interface Settings {
   /** Added to the greeting when set: "Good Evening, Jeay." */
   name: string
   date: boolean
+  /** Lead the date with the day of the week: "Tuesday, October 14th". */
+  weekday: boolean
   clock: ClockStyle
   search: boolean
   engine: SearchEngine
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   greeting: true,
   name: '',
   date: true,
+  weekday: false,
   clock: 'off',
   search: false,
   engine: 'google',
