@@ -40,6 +40,8 @@ export interface Settings {
   position: Position
   /** Run the animated backgrounds; off leaves them as a still. */
   animate: boolean
+  /** Learned from the person's own moves: a site (host) → the section id it belongs in. */
+  sortRules: Record<string, string>
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,7 +57,8 @@ export const DEFAULT_SETTINGS: Settings = {
   engine: 'google',
   newTab: false,
   position: 'center',
-  animate: true
+  animate: true,
+  sortRules: {}
 }
 
 export const SEARCH_URLS: Record<SearchEngine, string> = {

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
-  Check, Cloud, CloudOff, Download, Loader2, RotateCcw, SlidersHorizontal, Upload, Wand2
+  Bookmark, Check, Cloud, CloudOff, Download, Loader2, RotateCcw, SlidersHorizontal, Upload, Wand2
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { siDiscord } from 'simple-icons'
@@ -10,6 +10,7 @@ import BrandIcon from '@/components/BrandIcon.vue'
 import WallpaperPicker from '@/components/WallpaperPicker.vue'
 import { DISCORD_URL } from '@/config'
 import { useStartpage } from '@/composables/useStartpage'
+import { useAutoSort } from '@/composables/useAutoSort'
 import { findWallpaper } from '@/lib/wallpapers'
 import type { Position } from '@/lib/defaults'
 
@@ -21,6 +22,26 @@ const POSITIONS: { id: Position; name: string; icon: typeof Check }[] = [
 
 const { state, exportData, importData, resetLinks, resetSettings, setSyncEnabled, restorePreSync } = useStartpage()
 const router = useRouter()
+const autoSort = useAutoSort()
+const sortNotice = ref('')
+
+/** The switch: turning on shows the browser's permission prompt, so it runs straight from the click. */
+const toggleAutoSort = async (on: boolean) => {
+  sortNotice.value = ''
+  if (!on) return autoSort.disable()
+  if (!(await autoSort.enable())) sortNotice.value = 'Bookmark access wasn\'t allowed, so sorting stays off.'
+}
+
+const sortRecentNow = async () => {
+  const count = await autoSort.sortRecent(20)
+  sortNotice.value = count ? `Sorted ${count} bookmark${count === 1 ? '' : 's'}.` : 'Your recent bookmarks are already on the page.'
+}
+
+const learnedCount = computed(() => Object.keys(settings.sortRules).length)
+const forgetRules = () => {
+  settings.sortRules = {}
+  sortNotice.value = 'Forgot where you moved things. Sorting is back to its defaults.'
+}
 const settings = state.settings
 
 const open = ref(false)
@@ -196,6 +217,32 @@ const reset = () => {
             <input v-model="settings.newTab" type="checkbox" class="switch">
           </label>
         </div>
+
+        <template v-if="autoSort.supported">
+          <h3 class="mt-4 border-t border-white/10 px-1 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-white/45">Bookmarks</h3>
+          <div class="space-y-2 px-1 text-xs">
+            <label class="flex cursor-pointer items-center justify-between gap-3">
+              <span class="flex items-center gap-1.5 text-white/70"><Bookmark :size="13" /> Sort new bookmarks into sections</span>
+              <input
+                type="checkbox"
+                class="switch"
+                :checked="autoSort.enabled.value"
+                @change="toggleAutoSort(($event.target as HTMLInputElement).checked); ($event.target as HTMLInputElement).checked = autoSort.enabled.value"
+              >
+            </label>
+            <p class="text-[11px] leading-snug text-white/45">
+              Bookmark a page and it appears here: in the section named like its bookmark folder, or with similar sites, or under Saved.
+              Move it once and that site goes there from then on.
+            </p>
+            <div v-if="autoSort.enabled.value" class="flex flex-wrap gap-1.5">
+              <button class="field !text-xs hover:bg-white/20" @click="sortRecentNow">Sort my last 20 bookmarks</button>
+              <button v-if="learnedCount" class="field !text-xs hover:bg-white/20" @click="forgetRules">
+                Forget {{ learnedCount }} learned {{ learnedCount === 1 ? 'move' : 'moves' }}
+              </button>
+            </div>
+            <p v-if="sortNotice" class="text-[11px] text-white/70">{{ sortNotice }}</p>
+          </div>
+        </template>
 
         <template v-if="state.sync.available">
           <h3 class="mt-4 border-t border-white/10 px-1 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-white/45">Sync</h3>

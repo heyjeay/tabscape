@@ -29,7 +29,7 @@ if (navigator.userAgent.includes('Firefox')) STORES.reverse()
 
 const FEATURES = [
   { icon: Wand2, title: 'Set up in a minute', body: 'Pick from popular categories like gaming, streaming and AI, or start from a ready-made set. No account, no fuss.' },
-  { icon: LayoutGrid, title: 'Your sites, your way', body: 'Rename sections, recolour them, and drag links wherever you like. Changes save as you type.' },
+  { icon: LayoutGrid, title: 'Your sites, your way', body: 'Bookmark a page and it lands in the right section on its own. Rename, recolour and drag anything you like.' },
   { icon: Sparkles, title: 'Backgrounds that breathe', body: 'Starry nights, city lights, rain, fireflies and snow, drawn live and light on your computer.' },
   { icon: Palette, title: 'Make it yours', body: 'A greeting with your name, an optional clock and search box, and your links at the top, middle or bottom.' },
   { icon: Cloud, title: 'Follows you around', body: 'Sign into Chrome or Firefox on another computer and your new tab is already there, set up just how you left it.' },
@@ -221,6 +221,10 @@ const usage = computed(() => {
             <p>
               Your links and settings are stored in your browser. If "Sync across devices" is on, your browser copies them
               between your own computers through Chrome sync or Firefox Sync. That copy is handled by your browser, and it is never sent to us.
+            </p>
+            <p>
+              If you turn on bookmark sorting, Tabscape asks your browser for access to your bookmarks. It reads new
+              bookmarks to place them on your new tab, on your computer, and never sends them anywhere. Turning it off hands the access back.
             </p>
             <p>Custom background images load straight from the address you give. You can export or delete your setup at any time from the customize panel.</p>
           </div>

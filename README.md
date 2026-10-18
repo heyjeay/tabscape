@@ -17,6 +17,7 @@
 
 - **Set up in a minute:** pick sites from popular categories, or start from a ready-made set.
 - **Your sites, your way:** rename and recolour sections, and drag links between them. Changes save as you type.
+- **Bookmark it, it's sorted:** turn on bookmark sorting and new bookmarks land in the right section, by folder name or by site. Move one and it learns.
 - **Backgrounds that breathe:** starry night, city lights, rain, fireflies and snowfall, drawn live on a canvas.
 - **Make it yours:** a greeting with your name, an optional clock and search box, and your links at the top, centre or bottom.
 - **Follows you around:** with Chrome sync on, your setup appears on any browser signed into your account.

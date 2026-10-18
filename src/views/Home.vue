@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, Pencil, Plus, Search } from 'lucide-vue-next'
 import LinkSection from '@/components/LinkSection.vue'
 import CustomizePanel from '@/components/CustomizePanel.vue'
+import AutoSortToast from '@/components/AutoSortToast.vue'
+import { useAutoSortWatcher } from '@/composables/useAutoSort'
 import { useStartpage } from '@/composables/useStartpage'
 import { useNow } from '@/composables/useNow'
 import { SEARCH_URLS, type Position } from '@/lib/defaults'
@@ -12,6 +14,9 @@ const settings = state.settings
 const now = useNow()
 
 const editing = ref(false)
+
+// Sort new bookmarks into sections, if that's turned on (customize panel → Bookmarks).
+useAutoSortWatcher()
 const searchInput = ref<HTMLInputElement | null>(null)
 
 const focusSearchOnSlash = (event: KeyboardEvent) => {
@@ -149,5 +154,6 @@ const newSection = async () => {
         No links yet - press the pencil in the corner to add some.
       </p>
     </div>
+    <AutoSortToast />
   </main>
 </template>

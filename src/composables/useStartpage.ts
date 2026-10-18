@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { log } from '@/config'
 import { onRemoteChange, pushSnapshot, readSnapshot, syncAvailable, SyncTooBig, type Snapshot } from '@/lib/sync'
+import { hostOf, nameFromAddress, pickTarget, sameAddress, type NewBookmark } from '@/lib/autosort'
 import {
   DEFAULT_SETTINGS, defaultSections, uid,
   type Link, type Section, type Settings
@@ -105,13 +106,22 @@ const cleanSections = (input: unknown): Section[] | undefined => {
     })
 }
 
+/** Learned sort rules from untrusted JSON: a plain map of host → section id, nothing else. */
+const cleanRules = (input: unknown): Record<string, string> => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  return Object.fromEntries(
+    Object.entries(input as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string')
+  )
+}
+
 /** Keep only known settings of the right type, filling the rest from the defaults. */
 const cleanSettings = (input: unknown): Settings => {
-  const next = { ...DEFAULT_SETTINGS }
+  const next = { ...DEFAULT_SETTINGS, sortRules: {} }
   if (!input || typeof input !== 'object') return next
   const raw = input as Record<string, unknown>
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) {
-    if (typeof raw[key] === typeof DEFAULT_SETTINGS[key]) {
+    if (key === 'sortRules') next.sortRules = cleanRules(raw.sortRules)
+    else if (typeof raw[key] === typeof DEFAULT_SETTINGS[key]) {
       (next as Record<string, unknown>)[key] = raw[key]
     }
   }
@@ -300,6 +310,33 @@ export const useStartpage = () => {
     const [link] = from.links.splice(index, 1)
     const at = beforeId ? to.links.findIndex(l => l.id === beforeId) : -1
     to.links.splice(at < 0 ? to.links.length : at, 0, link)
+    // Moving a site to another section teaches auto-sort where it belongs next time.
+    const host = hostOf(link.url)
+    if (host && from !== to) state.settings.sortRules = { ...state.settings.sortRules, [host]: to.id }
+  }
+
+  /**
+   * Put new bookmarks where they belong (see lib/autosort), skipping any already
+   * on the page. Returns what was added, for the "Saved to …" note.
+   */
+  const addSortedBookmarks = (bookmarks: NewBookmark[]) => {
+    const added: { sectionId: string; linkId: string }[] = []
+    for (const bookmark of bookmarks) {
+      if (state.sections.some(s => s.links.some(l => sameAddress(l.url, bookmark.url)))) continue
+      const target = pickTarget(bookmark, state.sections, state.settings.sortRules)
+      let section = target.kind === 'section' ? findSection(target.id) : undefined
+      if (target.kind === 'create') {
+        section = { id: uid(), title: target.title, gradient: target.gradient, links: [] }
+        state.sections.push(section)
+        section = state.sections[state.sections.length - 1]
+      }
+      if (!section) continue
+      const link: Link = { id: uid(), name: bookmark.title.trim() || nameFromAddress(bookmark.url), url: bookmark.url }
+      section.links.push(link)
+      added.push({ sectionId: section.id, linkId: link.id })
+    }
+    log('auto-sorted', added.length, 'bookmarks')
+    return added
   }
 
   /** Everything as one JSON document, for backing up or moving to another browser. */
@@ -351,6 +388,7 @@ export const useStartpage = () => {
     addSection, removeSection, shiftSection,
     addLink, removeLink, moveLink,
     exportData, importData, resetLinks, resetSettings,
-    completeWelcome, setSyncEnabled, restorePreSync
+    completeWelcome, setSyncEnabled, restorePreSync,
+    addSortedBookmarks
   }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Trash2, X } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, FolderInput, GripVertical, Plus, Trash2, X } from 'lucide-vue-next'
 import { useStartpage } from '@/composables/useStartpage'
 import { endOf, useLinkDrag } from '@/composables/useLinkDrag'
 import { GRADIENTS, gradientCss, sameGradient } from '@/lib/gradients'
@@ -14,7 +14,10 @@ const props = defineProps<{
   last: boolean
 }>()
 
-const { addLink, removeLink, removeSection, shiftSection } = useStartpage()
+const { state, addLink, removeLink, removeSection, shiftSection, moveLink } = useStartpage()
+
+/** The other sections a link can be sent to with Move to. */
+const otherSections = computed(() => state.sections.filter(s => s.id !== props.section.id))
 const drag = useLinkDrag()
 
 const accent = computed(() => gradientCss(props.section.gradient))
@@ -137,6 +140,18 @@ const setColor = (index: 0 | 1, value: string) => {
           aria-label="Link address"
           @change="link.url = normalizeUrl(link.url)"
         >
+        <!-- Move to: a real select laid over the icon, so it works with mouse, keyboard and screen readers. -->
+        <label v-if="otherSections.length" class="icon-btn relative cursor-pointer" title="Move to another section">
+          <FolderInput :size="15" />
+          <select
+            class="absolute inset-0 cursor-pointer opacity-0"
+            :aria-label="`Move ${link.name || 'link'} to another section`"
+            @change="moveLink(section.id, link.id, ($event.target as HTMLSelectElement).value, null)"
+          >
+            <option value="" disabled selected>Move to…</option>
+            <option v-for="s in otherSections" :key="s.id" :value="s.id" class="bg-neutral-900">{{ s.title }}</option>
+          </select>
+        </label>
         <button class="icon-btn hover:!text-red-400" title="Remove link" @click="removeLink(section.id, link.id)">
           <X :size="15" />
         </button>

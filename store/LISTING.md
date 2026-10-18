@@ -22,6 +22,7 @@ Copy these into the Developer Dashboard. Images are in this folder.
 > • Pick from popular categories on first run (streaming, gaming, social, AI, shopping and more), or start from a ready-made set
 > • Rename sections, recolour them, add and remove links, and drag links between sections
 > • Changes save as you type
+> • Bookmark a page and it's sorted into the right section automatically. Move it once and Tabscape remembers
 >
 > **A look you'll like**
 > • Animated backgrounds drawn live: city lights, rain, starry night, fireflies and snowfall
@@ -57,6 +58,8 @@ Copy these into the Developer Dashboard. Images are in this folder.
 
 **Permission justification:** `storage` saves the user's links and settings, and syncs them between their own browsers through Chrome sync when they leave "Sync across devices" on. The new tab page itself comes from `chrome_url_overrides`.
 
+**Optional permission, `bookmarks`:** requested only when the user turns on "Sort new bookmarks into sections" in the settings panel, and released when they turn it off. Tabscape reads bookmarks added since the last check to place each one in a matching section of the user's new tab page. Bookmarks are processed locally and are never transmitted.
+
 **Remote code:** No, I am not using remote code. All scripts are packaged with the extension.
 
 **Data usage:** tick nothing. Tabscape does not collect or transmit any user data to the developer or anyone else. Links and settings are stored in the browser, and copied between the user's own browsers only by Chrome sync (`chrome.storage.sync`), under their own Google account.
@@ -67,7 +70,7 @@ Then tick the three certifications (data not sold, not used for unrelated purpos
 
 ## Upload
 
-Upload `tabscape-1.1.2.zip` from this folder. To make a new one after changes, bump `version` in `package.json`, then run `npm run build:extension` and zip the contents of `dist-extension/` (manifest at the top level of the zip).
+Upload `tabscape-1.2.0.zip` from this folder. To make a new one after changes, bump `version` in `package.json`, then run `npm run build:extension` and zip the contents of `dist-extension/` (manifest at the top level of the zip).
 
 ## Firefox (addons.mozilla.org)
 
