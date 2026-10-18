@@ -3,7 +3,7 @@ export const debug = false
 
 /** Tabscape's store pages, once each is approved. An empty one shows as "coming soon" on the website. */
 export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/tabscape/lcfglngeemnollbmimbfjmlifgbhiclk'
-export const FIREFOX_STORE_URL = ''
+export const FIREFOX_STORE_URL = 'https://addons.mozilla.org/firefox/addon/tabscape-new-tab/'
 
 /** The website shows how many people use Tabscape only from this many, across both stores. */
 export const STATS_MIN_USERS = 100
