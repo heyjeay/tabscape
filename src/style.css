@@ -27,6 +27,132 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+
+/*
+ * The fonts to choose from for the header and the links (lib/fonts.ts), bundled the
+ * same way and Latin only. Each one is only read from disk once something uses it.
+ */
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Lexend Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/lexend/files/lexend-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url('../node_modules/@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Comfortaa Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url('../node_modules/@fontsource-variable/comfortaa/files/comfortaa-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Space Grotesk Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url('../node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fraunces Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Playfair Display Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 900;
+  src: url('../node_modules/@fontsource-variable/playfair-display/files/playfair-display-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Orbitron Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 900;
+  src: url('../node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Caveat Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url('../node_modules/@fontsource-variable/caveat/files/caveat-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('../node_modules/@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* On html only: a body background would paint over the wallpaper layers behind the page. */
 html {
   background: #202125;
@@ -63,6 +189,90 @@ body {
   }
 }
 
+/*
+ * The header, section titles and links, in the font and size picked for each (lib/fonts.ts sets
+ * the variables). No faked bold: a font without one, like Press Start, stays as drawn.
+ */
+.tl-head {
+  font-family: var(--tl-font-head, inherit);
+  font-synthesis: none;
+}
+.tl-links {
+  font-family: var(--tl-font-link, inherit);
+  font-synthesis: none;
+}
+.tl-links .tl-title {
+  font-family: var(--tl-font-title, inherit);
+  font-size: calc(26px * var(--tl-title-scale, 1));
+}
+
+/*
+ * Links, and how they react to hover and keyboard focus. The style comes from the
+ * link's data-hover; --accent and --accent2 are its section's two colours. Inside a
+ * .tl-preview (the picker in the customize panel), pointing anywhere on it plays the effect.
+ */
+.tl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  color: #fff;
+  text-decoration: none;
+  transform-origin: left center;
+  transition: opacity 0.2s ease, transform 0.2s ease, text-shadow 0.25s ease, filter 0.25s ease;
+}
+.tl-link .tl-icon {
+  transition: filter 0.25s ease, transform 0.2s ease;
+}
+.tl-link[data-hover='fade']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  opacity: 0.7;
+}
+.tl-link[data-hover='lift']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  transform: translateY(-2px);
+}
+.tl-link[data-hover='expand']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  transform: scale(1.08);
+}
+.tl-link[data-hover='glow']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  text-shadow: 0 0 10px var(--accent), 0 0 22px var(--accent);
+}
+.tl-link[data-hover='glow']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) .tl-icon {
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.tl-link[data-hover='slide']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  transform: translateX(6px);
+}
+.tl-link[data-hover='glitch']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  animation: tl-glitch 0.4s steps(5, end);
+}
+.tl-link[data-hover='pixelate']:is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+  animation: tl-pixelate 0.45s steps(1, end);
+}
+
+@keyframes tl-glitch {
+  0% { text-shadow: 2px 0 var(--accent), -2px 0 var(--accent2); transform: translate(0); }
+  20% { text-shadow: -2px 0 var(--accent), 2px 0 var(--accent2); transform: translate(-1px, 1px); }
+  40% { text-shadow: 2px 1px var(--accent), -1px -1px var(--accent2); transform: translate(1px, -1px); }
+  60% { text-shadow: -1px 0 var(--accent), 1px 0 var(--accent2); transform: translate(0); }
+  100% { text-shadow: none; transform: none; }
+}
+
+/* Coarse to fine: the filters live in layout/StartLayout.vue. */
+@keyframes tl-pixelate {
+  0% { filter: url(#tl-px-6); }
+  33% { filter: url(#tl-px-4); }
+  66% { filter: url(#tl-px-2); }
+  100% { filter: none; }
+}
+
+/* For people who turn motion off: every style becomes a gentle fade. */
+@media (prefers-reduced-motion: reduce) {
+  .tl-link:not([data-hover='none']):is(:hover, :focus-visible, .tl-preview:hover *, .tl-preview:focus-visible *) {
+    transform: none !important;
+    animation: none !important;
+    opacity: 0.7;
+  }
+}
+
 /* Route changes. */
 .page-enter-active,
 .page-leave-active {
@@ -86,6 +296,35 @@ body {
 .step-leave-to {
   opacity: 0;
   transform: translateX(-16px);
+}
+
+/* Flipping between pages: forward slides in from the right, back from the left. */
+.tl-page {
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s;
+}
+.tl-page:not([data-place='here']) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* Stay visible while fading out, then hide. */
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s linear 0.22s;
+}
+.tl-page[data-place='before'] {
+  transform: translateX(-40px);
+}
+.tl-page[data-place='after'] {
+  transform: translateX(40px);
+}
+
+/* The settings drawer slides in from the right. */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+}
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(100%);
+  opacity: 0.6;
 }
 
 /* Background crossfade. */

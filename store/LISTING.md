@@ -18,16 +18,28 @@ Copy these into the Developer Dashboard. Images are in this folder.
 
 > Tabscape turns every new tab into a calm, good-looking start page with the sites you actually use.
 >
+> **New in 1.3.0: Customize to your heart's content**
+> • A new settings drawer, with your page in clear view as you change it
+> • 14 built-in fonts, with their own sizes for the greeting, section titles and links
+> • More than one page: switch with the page bar, the arrow keys, a swipe or a scroll
+> • Site icons or your own images next to links, and 8 hover animations
+> • New bookmarks sort themselves into the right section (optional)
+> • Fixed: sync now brings your links to a new computer
+>
 > **Your links, your way**
 > • Pick from popular categories on first run (streaming, gaming, social, AI, shopping and more), or start from a ready-made set
 > • Rename sections, recolour them, add and remove links, and drag links between sections
 > • Changes save as you type
+> • Spread your links over as many pages as you like
 > • Bookmark a page and it's sorted into the right section automatically. Move it once and Tabscape remembers
 >
 > **A look you'll like**
 > • Animated backgrounds drawn live: city lights, rain, starry night, fireflies and snowfall
 > • Gradient wallpapers, or your own image or GIF
 > • Dim and blur controls so your links always stay readable
+> • Fonts and sizes for the greeting, section titles and links
+> • Hover animations: fade, lift, expand, glow, slide, glitch or pixelate
+> • Site icons, or your own image for any link
 > • Put everything at the top, centre or bottom of the screen
 >
 > **Little touches**
@@ -60,6 +72,8 @@ Copy these into the Developer Dashboard. Images are in this folder.
 
 **Optional permission, `bookmarks`:** requested only when the user turns on "Sort new bookmarks into sections" in the settings panel, and released when they turn it off. Tabscape reads bookmarks added since the last check to place each one in a matching section of the user's new tab page. Bookmarks are processed locally and are never transmitted.
 
+**Optional permission, `favicon`:** requested only when the user turns on "Use real site icons" in the settings panel, and released when they turn it off. Tabscape reads the icons the browser has already saved for the user's own links, to show next to each link on the new tab page. Nothing is fetched or transmitted.
+
 **Remote code:** No, I am not using remote code. All scripts are packaged with the extension.
 
 **Data usage:** tick nothing. Tabscape does not collect or transmit any user data to the developer or anyone else. Links and settings are stored in the browser, and copied between the user's own browsers only by Chrome sync (`chrome.storage.sync`), under their own Google account.
@@ -70,7 +84,7 @@ Then tick the three certifications (data not sold, not used for unrelated purpos
 
 ## Upload
 
-Upload `tabscape-1.2.0.zip` from this folder. To make a new one after changes, bump `version` in `package.json`, then run `npm run build:extension` and zip the contents of `dist-extension/` (manifest at the top level of the zip).
+Upload `tabscape-1.3.0.zip` from this folder. To make a new one after changes, bump `version` in `package.json`, then run `npm run build:extension` and zip the contents of `dist-extension/` (manifest at the top level of the zip).
 
 ## Firefox (addons.mozilla.org)
 
@@ -85,3 +99,23 @@ Submit at https://addons.mozilla.org/developers/addon/submit/ and choose **On th
 - **Privacy policy:** https://heyjeay.github.io/tabscape/#privacy
 - **Data collection:** already declared as none in the manifest.
 - **Images:** the same icon and screenshots work. AMO doesn't use the promo tiles.
+
+## What's new in 1.3.0: Customize to your heart's content
+
+Paste into AMO's **Release notes** box. The Chrome Web Store has no release notes field; the full notes are in `CHANGELOG.md`.
+
+```
+Customize to your heart's content: the biggest update yet.
+
+- New settings drawer: everything sorted into categories, and the page stays clear behind it so you see each change as you make it.
+- Fonts and sizes: pick from 14 built-in fonts, with a separate font and size for the greeting, section titles and links.
+- Pages: spread your links over more than one page. Switch with the page bar, the arrow keys, a trackpad swipe, or by scrolling. The page bar can hide itself when idle.
+- Site icons: a letter, the real site icon, or your own image next to every link.
+- 8 hover animations: Fade, Lift, Expand, Glow, Slide, Glitch, Pixelate or None.
+- Bookmarks sort themselves (optional): new bookmarks land in the right section, with Move to, Undo and New section right in the note. Tabscape learns where you move things.
+- Move links between sections and pages while editing.
+- Fixed: sync now brings your links to a new computer.
+- Smoother page switching.
+
+Bookmarks and real site icons each ask for permission only when you switch them on. Nothing is ever sent anywhere.
+```

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { ChevronLeft, ChevronRight, FolderInput, GripVertical, Plus, Trash2, X } from 'lucide-vue-next'
-import { useStartpage } from '@/composables/useStartpage'
+import { pageOf, useStartpage } from '@/composables/useStartpage'
+import LinkIcon from '@/components/LinkIcon.vue'
+import { imageFileToIcon } from '@/lib/image'
 import { endOf, useLinkDrag } from '@/composables/useLinkDrag'
 import { GRADIENTS, gradientCss, sameGradient } from '@/lib/gradients'
 import { normalizeUrl, type Section } from '@/lib/defaults'
+import { linkScale } from '@/lib/fonts'
 
 const props = defineProps<{
   section: Section
@@ -14,10 +17,50 @@ const props = defineProps<{
   last: boolean
 }>()
 
-const { state, addLink, removeLink, removeSection, shiftSection, moveLink } = useStartpage()
+const { state, addLink, removeLink, removeSection, shiftSection, moveLink, setLinkIcon } = useStartpage()
+
+/** With more than one page, section names in menus say which page they're on. */
+/** Icons grow and shrink with the links' text size. */
+const iconSize = computed(() => Math.round(18 * linkScale(state.settings)))
+
+const pageName = (id: string) => state.pages.find(p => p.id === id)?.name ?? ''
+const labelOf = (s: typeof props.section) =>
+  state.pages.length > 1 ? `${pageName(pageOf(s))} › ${s.title}` : s.title
 
 /** The other sections a link can be sent to with Move to. */
 const otherSections = computed(() => state.sections.filter(s => s.id !== props.section.id))
+
+/** Which page this section is on, for the page picker while editing. */
+const sectionPage = computed({
+  get: () => pageOf(props.section),
+  set: (id: string) => { props.section.page = id }
+})
+
+// One hidden file picker per card, pointed at whichever link's image is being changed.
+const iconInput = ref<HTMLInputElement | null>(null)
+const iconFor = ref<string | null>(null)
+const iconError = ref('')
+let errorTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(errorTimer))
+
+const pickIcon = (linkId: string) => {
+  iconFor.value = linkId
+  iconInput.value?.click()
+}
+
+const onIconFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !iconFor.value) return
+  try {
+    setLinkIcon(iconFor.value, await imageFileToIcon(file))
+  } catch (err) {
+    iconError.value = err instanceof Error ? err.message : "That image couldn't be used"
+    clearTimeout(errorTimer)
+    errorTimer = setTimeout(() => { iconError.value = '' }, 4000)
+  }
+}
 const drag = useLinkDrag()
 
 const accent = computed(() => gradientCss(props.section.gradient))
@@ -47,21 +90,23 @@ const setColor = (index: 0 | 1, value: string) => {
 
 <template>
   <!-- Viewing: the page's original column, as it always looked. -->
-  <div v-if="!editing" class="m-5">
+  <div v-if="!editing" class="tl-links m-5" style="font-size: calc(16px * var(--tl-link-scale, 1))">
     <ol class="my-4 list-none pl-10">
       <li>
-        <h3 class="gradient-text m-0 inline text-[26px] font-bold" :style="{ backgroundImage: accent }">
+        <h3 class="gradient-text tl-title m-0 inline font-bold" :style="{ backgroundImage: accent }">
           {{ section.title }}
         </h3>
       </li>
       <li aria-hidden="true" class="h-[3px] w-[180px]" :style="{ backgroundImage: accent }" />
       <li v-for="link in visibleLinks" :key="link.id" class="pl-[5px] pt-[5px]">
         <a
-          class="text-white no-underline transition-opacity hover:opacity-70"
+          class="tl-link"
+          :data-hover="state.settings.hover"
+          :style="{ '--accent': section.gradient[0], '--accent2': section.gradient[1] }"
           :href="link.url"
           :target="newTab ? '_blank' : undefined"
           :rel="newTab ? 'noopener noreferrer' : undefined"
-        >{{ link.name || link.url }}</a>
+        ><LinkIcon v-if="state.settings.icons" :link="link" :gradient="section.gradient" :size="iconSize" /><span class="tl-label">{{ link.name || link.url }}</span></a>
       </li>
     </ol>
   </div>
@@ -126,6 +171,26 @@ const setColor = (index: 0 | 1, value: string) => {
         >
           <GripVertical :size="16" />
         </span>
+        <!-- The link's image: click to choose your own; the little x puts the site icon or letter back. -->
+        <span class="group/icon relative shrink-0">
+          <button
+            class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-white/10"
+            :title="state.icons[link.id] ? 'Change this image' : 'Choose an image for this link'"
+            :aria-label="`Choose an image for ${link.name || 'this link'}`"
+            @click="pickIcon(link.id)"
+          >
+            <LinkIcon :link="link" :gradient="section.gradient" />
+          </button>
+          <button
+            v-if="state.icons[link.id]"
+            class="absolute -right-1 -top-1 hidden h-4 w-4 place-items-center rounded-full bg-neutral-800 text-white/80 ring-1 ring-white/20 hover:bg-red-500 hover:text-white group-hover/icon:grid"
+            title="Remove this image"
+            :aria-label="`Remove the image for ${link.name || 'this link'}`"
+            @click="setLinkIcon(link.id, null)"
+          >
+            <X :size="10" />
+          </button>
+        </span>
         <input
           v-model="link.name"
           :data-link="link.id"
@@ -149,7 +214,7 @@ const setColor = (index: 0 | 1, value: string) => {
             @change="moveLink(section.id, link.id, ($event.target as HTMLSelectElement).value, null)"
           >
             <option value="" disabled selected>Move to…</option>
-            <option v-for="s in otherSections" :key="s.id" :value="s.id" class="bg-neutral-900">{{ s.title }}</option>
+            <option v-for="s in otherSections" :key="s.id" :value="s.id" class="bg-neutral-900">{{ labelOf(s) }}</option>
           </select>
         </label>
         <button class="icon-btn hover:!text-red-400" title="Remove link" @click="removeLink(section.id, link.id)">
@@ -167,6 +232,15 @@ const setColor = (index: 0 | 1, value: string) => {
     >
       <Plus :size="15" /> Add link
     </button>
+    <input ref="iconInput" type="file" accept="image/*" class="hidden" @change="onIconFile">
+    <p v-if="iconError" class="px-1 pt-1 text-xs text-amber-200/90">{{ iconError }}</p>
+
+    <label v-if="state.pages.length > 1" class="mt-3 flex items-center justify-between gap-2 text-xs">
+      <span class="text-white/60">Page</span>
+      <select v-model="sectionPage" class="field !py-0.5 !text-xs" aria-label="Page this section is on">
+        <option v-for="p in state.pages" :key="p.id" :value="p.id" class="bg-neutral-900">{{ p.name }}</option>
+      </select>
+    </label>
 
     <div class="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
       <div class="flex gap-1">

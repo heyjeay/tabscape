@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Check, Pencil, Plus, Search } from 'lucide-vue-next'
 import LinkSection from '@/components/LinkSection.vue'
 import CustomizePanel from '@/components/CustomizePanel.vue'
 import AutoSortToast from '@/components/AutoSortToast.vue'
+import PageBar from '@/components/PageBar.vue'
+import WhatsNew from '@/components/WhatsNew.vue'
+import { usePages } from '@/composables/usePages'
 import { useAutoSortWatcher } from '@/composables/useAutoSort'
-import { useStartpage } from '@/composables/useStartpage'
+import { pageOf, useStartpage } from '@/composables/useStartpage'
 import { useNow } from '@/composables/useNow'
 import { SEARCH_URLS, type Position } from '@/lib/defaults'
 
@@ -18,6 +21,78 @@ const editing = ref(false)
 // Sort new bookmarks into sections, if that's turned on (customize panel → Bookmarks).
 useAutoSortWatcher()
 const searchInput = ref<HTMLInputElement | null>(null)
+
+const pages = usePages()
+/** Each page's sections. Every page is laid out at once, one on top of another, so the
+ *  block keeps the height of the tallest and the header doesn't move as you switch. */
+const sectionsOn = computed(() => {
+  const on: Record<string, typeof state.sections> = {}
+  for (const page of state.pages) on[page.id] = []
+  for (const section of state.sections) on[pageOf(section)].push(section)
+  return on
+})
+const here = computed(() => state.pages.findIndex(p => p.id === pages.current.value.id))
+const place = (i: number) => (i < here.value ? 'before' : i > here.value ? 'after' : 'here')
+
+const typing = (target: EventTarget | null) =>
+  target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable="true"]')
+
+/** ← and → flip pages, unless you're typing. */
+const flipWithArrows = (event: KeyboardEvent) => {
+  if (state.pages.length < 2 || event.altKey || event.ctrlKey || event.metaKey || typing(event.target)) return
+  if (event.key === 'ArrowRight') pages.next()
+  else if (event.key === 'ArrowLeft') pages.prev()
+}
+
+/**
+ * A sideways swipe on a trackpad flips pages, and so does scrolling up or down when
+ * that's switched on (Customize → Layout). One flip per gesture: after a flip, and
+ * while the page itself is scrolling, nothing flips until the wheel has been still a moment.
+ */
+let wheel = 0
+let busy = false
+let quiet: ReturnType<typeof setTimeout> | undefined
+const holdUntilStill = (ms = 250) => {
+  busy = true
+  clearTimeout(quiet)
+  quiet = setTimeout(() => { busy = false; wheel = 0 }, ms)
+}
+const flipWithWheel = (event: WheelEvent) => {
+  if (state.pages.length < 2 || event.ctrlKey) return
+  // Not in the settings drawer, or anything else that scrolls on its own.
+  if (event.target instanceof Element && event.target.closest('[role="dialog"], select, textarea')) return
+  const sideways = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+  if (!sideways && (!settings.scrollPages || editing.value)) return
+  const delta = (sideways ? event.deltaX : event.deltaY) * (event.deltaMode === 1 ? 40 : 1)
+  if (!sideways) {
+    // A page taller than the window scrolls first; it flips from the top or bottom edge.
+    const doc = document.scrollingElement ?? document.documentElement
+    const room = delta > 0 ? doc.scrollHeight - doc.clientHeight - doc.scrollTop : doc.scrollTop
+    if (room > 1) { holdUntilStill(); return }
+  }
+  if (busy) { holdUntilStill(); return }
+  wheel += delta
+  clearTimeout(quiet)
+  quiet = setTimeout(() => { wheel = 0 }, 250)
+  if (Math.abs(wheel) < 60) return
+  if (wheel > 0) pages.next()
+  else pages.prev()
+  wheel = 0
+  holdUntilStill(600)
+}
+
+// A new page starts at its top.
+watch(here, () => { if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'smooth' }) })
+
+onMounted(() => {
+  window.addEventListener('keydown', flipWithArrows)
+  window.addEventListener('wheel', flipWithWheel, { passive: true })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', flipWithArrows)
+  window.removeEventListener('wheel', flipWithWheel)
+  clearTimeout(quiet)
+})
 
 const focusSearchOnSlash = (event: KeyboardEvent) => {
   if (event.key !== '/' || !settings.search) return
@@ -72,7 +147,7 @@ const search = () => {
 }
 
 const newSection = async () => {
-  const section = addSection()
+  const section = addSection(pages.current.value.id)
   await nextTick()
   document.querySelector<HTMLInputElement>(`[data-section="${section.id}"] input`)?.select()
 }
@@ -80,7 +155,8 @@ const newSection = async () => {
 
 <template>
   <main
-    class="flex min-h-screen flex-wrap items-start justify-center pb-10"
+    class="flex min-h-screen flex-wrap items-start justify-center"
+    :style="{ paddingBottom: editing || state.pages.length > 1 ? '5.5rem' : '2.5rem' }"
     :class="editing ? 'content-start' : ALIGN[settings.position] ?? 'content-start'"
   >
     <!-- Tools, in the corner, out of the way until they're wanted. -->
@@ -104,10 +180,14 @@ const newSection = async () => {
       <CustomizePanel />
     </div>
 
-    <h1 v-if="settings.greeting" class="m-0 w-full text-center text-[60px] font-bold leading-tight">
+    <h1
+      v-if="settings.greeting"
+      class="tl-head m-0 w-full text-center font-bold leading-tight"
+      style="font-size: calc(60px * var(--tl-head-scale, 1))"
+    >
       {{ greeting }}
     </h1>
-    <h1 v-if="subtitle" class="my-[0.67em] w-full text-center text-[30px] font-bold">
+    <h1 v-if="subtitle" class="tl-head my-[0.67em] w-full text-center font-bold" style="font-size: calc(30px * var(--tl-head-scale, 1))">
       {{ subtitle }}
     </h1>
     <!-- Keep the columns clear of the corner tools when the header is switched off. -->
@@ -130,16 +210,25 @@ const newSection = async () => {
       Changes save as you type. Drag the handle to reorder links, or drop them into another section.
     </p>
 
-    <div class="flex w-full flex-wrap items-start justify-center">
+    <!-- Every page in the same spot; the one showing is in front, the rest wait off to
+         either side (style.css, .tl-page) and slide in the way you're going. -->
+    <div class="grid w-full overflow-x-clip">
+    <div
+      v-for="(page, p) in state.pages"
+      :key="page.id"
+      class="tl-page flex w-full flex-wrap items-start justify-center [grid-area:1/1]"
+      :data-place="place(p)"
+      :inert="place(p) !== 'here'"
+    >
       <LinkSection
-        v-for="(section, i) in state.sections"
+        v-for="(section, i) in sectionsOn[page.id]"
         :key="section.id"
         :data-section="section.id"
         :section="section"
         :editing="editing"
         :new-tab="settings.newTab"
         :first="i === 0"
-        :last="i === state.sections.length - 1"
+        :last="i === sectionsOn[page.id].length - 1"
       />
 
       <button
@@ -150,10 +239,13 @@ const newSection = async () => {
         <Plus :size="22" /> Add section
       </button>
 
-      <p v-if="!editing && !state.sections.length" class="mt-10 text-white/60">
-        No links yet - press the pencil in the corner to add some.
+      <p v-if="!editing && !sectionsOn[page.id].length" class="mt-10 text-white/60">
+        {{ state.pages.length > 1 ? 'This page is empty. Press the pencil to add sections.' : 'No links yet - press the pencil in the corner to add some.' }}
       </p>
     </div>
+    </div>
+    <PageBar :editing="editing" />
     <AutoSortToast />
+    <WhatsNew />
   </main>
 </template>

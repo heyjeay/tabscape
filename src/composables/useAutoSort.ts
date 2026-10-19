@@ -1,6 +1,6 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { log } from '@/config'
-import { useStartpage } from './useStartpage'
+import { useStartpage, type SortedEntry } from './useStartpage'
 import {
   bookmarksSince, bookmarksSupported, hasBookmarkAccess, releaseBookmarkAccess, requestBookmarkAccess
 } from '@/lib/bookmarks'
@@ -31,7 +31,7 @@ const local = {
 /** Shared across the page: the panel switch and the sorter see the same state. */
 const enabled = ref(bookmarksSupported() && local.get(ENABLED_KEY) === '1')
 /** What was just sorted, for the "Saved to …" note; `existing` ones were already on the page. Cleared when the note closes. */
-const justAdded = ref<{ sectionId: string; linkId: string; existing?: true }[]>([])
+const justAdded = ref<SortedEntry[]>([])
 let running = false
 
 export const useAutoSort = () => {

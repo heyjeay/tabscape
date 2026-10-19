@@ -1,5 +1,5 @@
 import { log } from '@/config'
-import type { Section, Settings } from './defaults'
+import type { Page, Section, Settings } from './defaults'
 
 /**
  * Chrome's synced storage: what the extension saves here follows the person to
@@ -23,11 +23,28 @@ const TOTAL_LIMIT = 102400 - 1024
 
 const sectionKey = (id: string) => `s:${id}`
 
+/**
+ * A list, even if it was saved as {"0": a, "1": b}: versions before 1.3 pushed
+ * reactive lists, which storage kept in that shape. Anything else becomes [].
+ */
+export const asList = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length && entries.every(([k]) => /^\d+$/.test(k))) {
+      return entries.sort((a, b) => Number(a[0]) - Number(b[0])).map(([, v]) => v)
+    }
+  }
+  return []
+}
+
 export interface Snapshot {
   updatedAt: number
   welcomed: boolean
   sections: unknown[]
   settings: unknown
+  /** Absent in snapshots from before pages existed. */
+  pages?: unknown
 }
 
 interface Meta {
@@ -35,6 +52,7 @@ interface Meta {
   updatedAt: number
   welcomed: boolean
   order: string[]
+  pages?: Page[]
 }
 
 /** What each synced item last held, as JSON, so a push sends only what changed and removes what's gone. */
@@ -52,19 +70,22 @@ export const readSnapshot = async (): Promise<Snapshot | null> => {
       .map(([k, v]) => [k, JSON.stringify(v)])
   )
   const meta = all.meta as Meta | undefined
-  if (!meta || !Array.isArray(meta.order)) return null
+  if (!meta) return null
+  meta.order = asList(meta.order) as string[]
+  if (!meta.order.length) return null
   return {
     updatedAt: Number(meta.updatedAt) || 0,
     welcomed: !!meta.welcomed,
     settings: all.settings,
+    pages: meta.pages,
     sections: meta.order.map(id => all[sectionKey(id)]).filter(Boolean)
   }
 }
 
-export const pushSnapshot = async (s: { updatedAt: number; welcomed: boolean; sections: Section[]; settings: Settings }) => {
+export const pushSnapshot = async (s: { updatedAt: number; welcomed: boolean; sections: Section[]; settings: Settings; pages: Page[] }) => {
   const store = area()
   if (!store) return
-  const meta: Meta = { v: 1, updatedAt: s.updatedAt, welcomed: s.welcomed, order: s.sections.map(x => x.id) }
+  const meta: Meta = { v: 1, updatedAt: s.updatedAt, welcomed: s.welcomed, order: s.sections.map(x => x.id), pages: s.pages }
   const items: Record<string, unknown> = { settings: s.settings, meta }
   for (const section of s.sections) items[sectionKey(section.id)] = section
 
@@ -82,7 +103,11 @@ export const pushSnapshot = async (s: { updatedAt: number; welcomed: boolean; se
   }
   if (total > TOTAL_LIMIT) throw new SyncTooBig('Too many links to sync in all')
 
-  const changed = Object.fromEntries(Object.entries(items).filter(([k]) => json[k] !== lastPushed[k]))
+  // Push plain copies, never the page's reactive objects: storage saves a reactive
+  // list as an object ({"0": …}), and another computer would then read no links.
+  const changed = Object.fromEntries(
+    Object.keys(items).filter(k => json[k] !== lastPushed[k]).map(k => [k, JSON.parse(json[k])])
+  )
   const stale = Object.keys(lastPushed).filter(k => k.startsWith('s:') && !(k in items))
   // Sections and meta land in one write, so another device never sees an order without its sections.
   if (Object.keys(changed).length) await store.set(changed)

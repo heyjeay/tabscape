@@ -12,10 +12,34 @@ export interface Section {
   title: string
   gradient: Gradient
   links: Link[]
+  /** The page it's on. Missing (or a page that's gone) means the first page. */
+  page?: string
 }
+
+/** A page of sections, switched between at the bottom of the screen. */
+export interface Page {
+  id: string
+  name: string
+}
+
+export const defaultPages = (): Page[] => [{ id: 'home', name: 'Home' }]
 
 export type ClockStyle = 'off' | '12h' | '24h'
 export type SearchEngine = 'google' | 'duckduckgo' | 'bing'
+/** How a link reacts to the pointer (or keyboard focus). See .tl-link in style.css. */
+export type HoverStyle = 'fade' | 'lift' | 'expand' | 'glow' | 'slide' | 'glitch' | 'pixelate' | 'none'
+
+export const HOVER_STYLES: { id: HoverStyle; name: string }[] = [
+  { id: 'fade', name: 'Fade' },
+  { id: 'lift', name: 'Lift' },
+  { id: 'expand', name: 'Expand' },
+  { id: 'glow', name: 'Glow' },
+  { id: 'slide', name: 'Slide' },
+  { id: 'glitch', name: 'Glitch' },
+  { id: 'pixelate', name: 'Pixelate' },
+  { id: 'none', name: 'None' }
+]
+
 /** Where the greeting and links sit on the screen. */
 export type Position = 'top' | 'center' | 'bottom'
 
@@ -42,6 +66,20 @@ export interface Settings {
   animate: boolean
   /** Learned from the person's own moves: a site (host) → the section id it belongs in. */
   sortRules: Record<string, string>
+  hover: HoverStyle
+  /** Show an icon before each link: its own image, the site's icon, or a letter. */
+  icons: boolean
+  /** Scrolling up or down flips to the previous or next page. */
+  scrollPages: boolean
+  /** The page switcher slides away when it hasn't been used for a few seconds. */
+  hidePageBar: boolean
+  /** Fonts (lib/fonts.ts ids) and sizes (1 is the usual size) for the greeting and date, section titles, and links. */
+  headerFont: string
+  headerSize: number
+  titleFont: string
+  titleSize: number
+  linkFont: string
+  linkSize: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -58,7 +96,17 @@ export const DEFAULT_SETTINGS: Settings = {
   newTab: false,
   position: 'center',
   animate: true,
-  sortRules: {}
+  sortRules: {},
+  hover: 'fade',
+  icons: true,
+  scrollPages: true,
+  hidePageBar: false,
+  headerFont: 'google-sans',
+  headerSize: 1,
+  titleFont: 'google-sans',
+  titleSize: 1,
+  linkFont: 'google-sans',
+  linkSize: 1
 }
 
 export const SEARCH_URLS: Record<SearchEngine, string> = {

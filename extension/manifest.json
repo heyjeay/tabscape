@@ -16,6 +16,7 @@
     "storage"
   ],
   "optional_permissions": [
-    "bookmarks"
+    "bookmarks",
+    "favicon"
   ]
 }

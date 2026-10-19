@@ -16,10 +16,20 @@ const browserExtension = (browser: 'chrome' | 'firefox'): Plugin => ({
     const { version } = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'))
     const manifest = JSON.parse(readFileSync(path.resolve(__dirname, 'extension/manifest.json'), 'utf8'))
     const firefox = JSON.parse(readFileSync(path.resolve(__dirname, 'extension/firefox.json'), 'utf8'))
-    const source = browser === 'firefox' ? { ...manifest, ...firefox, version } : { ...manifest, version }
+    const source = browser === 'firefox'
+      ? {
+          ...manifest,
+          ...firefox,
+          version,
+          // Firefox has no favicon permission; links there show letters or people's own images.
+          optional_permissions: (manifest.optional_permissions ?? []).filter((p: string) => p !== 'favicon')
+        }
+      : { ...manifest, version }
     this.emitFile({ type: 'asset', fileName: 'manifest.json', source: JSON.stringify(source, null, 2) })
   },
 })
+
+const { version: APP_VERSION } = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'))
 
 export default defineConfig(({ mode }) => {
   const extension = mode === 'extension' || mode === 'firefox'
@@ -36,6 +46,7 @@ export default defineConfig(({ mode }) => {
     publicDir: path.resolve(__dirname, 'public'),
     // Relative, so every build works from wherever it's served or opened.
     base: './',
+    define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

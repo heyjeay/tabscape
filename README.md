@@ -19,7 +19,9 @@
 - **Your sites, your way:** rename and recolour sections, and drag links between them. Changes save as you type.
 - **Bookmark it, it's sorted:** turn on bookmark sorting and new bookmarks land in the right section, by folder name or by site. Move one and it learns.
 - **Backgrounds that breathe:** starry night, city lights, rain, fireflies and snowfall, drawn live on a canvas.
-- **Make it yours:** a greeting with your name, an optional clock and search box, and your links at the top, centre or bottom.
+- **Make it yours:** 14 built-in fonts with their own sizes for the greeting, section titles and links, 8 hover animations, and site icons or your own images next to links.
+- **Room for more:** spread your links over several pages, and flip between them with the page bar, the arrow keys, a swipe or a scroll.
+- **The basics, your way:** a greeting with your name, an optional clock and search box, and your links at the top, centre or bottom.
 - **Follows you around:** with Chrome sync on, your setup appears on any browser signed into your account.
 - **Private by design:** no account, no servers, no tracking.
 
