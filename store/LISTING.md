@@ -110,7 +110,7 @@ Customize to your heart's content: the biggest update yet.
 - New settings drawer: everything sorted into categories, and the page stays clear behind it so you see each change as you make it.
 - Fonts and sizes: pick from 14 built-in fonts, with a separate font and size for the greeting, section titles and links.
 - Pages: spread your links over more than one page. Switch with the page bar, the arrow keys, a trackpad swipe, or by scrolling. The page bar can hide itself when idle.
-- Site icons: a letter, the real site icon, or your own image next to every link.
+- Link icons: a colourful letter, or your own image, next to every link. (In Chrome, the real site icon too.)
 - 8 hover animations: Fade, Lift, Expand, Glow, Slide, Glitch, Pixelate or None.
 - Bookmarks sort themselves (optional): new bookmarks land in the right section, with Move to, Undo and New section right in the note. Tabscape learns where you move things.
 - Move links between sections and pages while editing.
