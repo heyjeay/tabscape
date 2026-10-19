@@ -316,13 +316,19 @@ export const useStartpage = () => {
   }
 
   /**
-   * Put new bookmarks where they belong (see lib/autosort), skipping any already
-   * on the page. Returns what was added, for the "Saved to …" note.
+   * Put new bookmarks where they belong (see lib/autosort). One already on the
+   * page isn't added again, but is reported (`existing`), so the note can say
+   * where it is rather than staying silent.
    */
   const addSortedBookmarks = (bookmarks: NewBookmark[]) => {
-    const added: { sectionId: string; linkId: string }[] = []
+    const added: { sectionId: string; linkId: string; existing?: true }[] = []
     for (const bookmark of bookmarks) {
-      if (state.sections.some(s => s.links.some(l => sameAddress(l.url, bookmark.url)))) continue
+      const home = state.sections.find(s => s.links.some(l => sameAddress(l.url, bookmark.url)))
+      if (home) {
+        const link = home.links.find(l => sameAddress(l.url, bookmark.url))!
+        if (!added.some(a => a.linkId === link.id)) added.push({ sectionId: home.id, linkId: link.id, existing: true })
+        continue
+      }
       const target = pickTarget(bookmark, state.sections, state.settings.sortRules)
       let section = target.kind === 'section' ? findSection(target.id) : undefined
       if (target.kind === 'create') {
@@ -335,7 +341,7 @@ export const useStartpage = () => {
       section.links.push(link)
       added.push({ sectionId: section.id, linkId: link.id })
     }
-    log('auto-sorted', added.length, 'bookmarks')
+    log('auto-sorted', added.filter(a => !a.existing).length, 'bookmarks')
     return added
   }
 

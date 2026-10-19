@@ -30,8 +30,8 @@ const local = {
 
 /** Shared across the page: the panel switch and the sorter see the same state. */
 const enabled = ref(bookmarksSupported() && local.get(ENABLED_KEY) === '1')
-/** What was just sorted, for the "Saved to …" note. Cleared when the note closes. */
-const justAdded = ref<{ sectionId: string; linkId: string }[]>([])
+/** What was just sorted, for the "Saved to …" note; `existing` ones were already on the page. Cleared when the note closes. */
+const justAdded = ref<{ sectionId: string; linkId: string; existing?: true }[]>([])
 let running = false
 
 export const useAutoSort = () => {
@@ -45,7 +45,7 @@ export const useAutoSort = () => {
     // Oldest first, so they land in the order they were saved.
     const added = addSortedBookmarks(found.reverse())
     if (added.length) justAdded.value = added
-    return added.length
+    return added.filter(a => !a.existing).length
   }
 
   /** Sort anything bookmarked since the last look. Safe to call often. */

@@ -22,7 +22,7 @@ const rows = computed(() =>
     .map(entry => {
       const section = state.sections.find(s => s.id === entry.sectionId)
       const link = section?.links.find(l => l.id === entry.linkId)
-      return section && link ? { ...entry, name: link.name || link.url } : null
+      return section && link ? { ...entry, name: link.name || link.url, sectionTitle: section.title } : null
     })
     .filter(<T,>(r: T | null): r is T => r !== null)
 )
@@ -75,10 +75,15 @@ const undo = (linkId: string, sectionId: string) => {
 
       <ul class="space-y-1.5">
         <li v-for="row in rows.slice(0, MAX_ROWS)" :key="row.linkId" class="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-2">
-          <span class="min-w-0 flex-1 truncate">
+          <!-- Already on the page: nothing was added, so say where it is instead of staying silent. -->
+          <span v-if="row.existing" class="min-w-0 flex-1 truncate text-white/75">
+            <span class="font-semibold text-white">{{ row.name }}</span> is already in <span class="font-semibold text-white">{{ row.sectionTitle }}</span>
+          </span>
+          <span v-if="!row.existing" class="min-w-0 flex-1 truncate">
             Saved <span class="font-semibold">{{ row.name }}</span> to
           </span>
           <select
+            v-if="!row.existing"
             :value="row.sectionId"
             class="field max-w-[140px] !py-0.5 !text-xs"
             :aria-label="`Section for ${row.name}`"
@@ -86,7 +91,7 @@ const undo = (linkId: string, sectionId: string) => {
           >
             <option v-for="s in state.sections" :key="s.id" :value="s.id" class="bg-neutral-900">{{ s.title }}</option>
           </select>
-          <button class="text-xs text-white/55 underline-offset-2 transition hover:text-white hover:underline" @click="undo(row.linkId, row.sectionId)">
+          <button v-if="!row.existing" class="text-xs text-white/55 underline-offset-2 transition hover:text-white hover:underline" @click="undo(row.linkId, row.sectionId)">
             Undo
           </button>
         </li>
