@@ -127,7 +127,10 @@ const greeting = computed(() => {
   return `Good ${part}${name ? `, ${name}` : ''}.`
 })
 
-const date = computed(() => `${MONTHS[now.value.getMonth()]} ${ordinal(now.value.getDate())}`)
+const date = computed(() => {
+  const day = `${MONTHS[now.value.getMonth()]} ${ordinal(now.value.getDate())}`
+  return settings.weekday ? `${now.value.toLocaleDateString('en', { weekday: 'long' })}, ${day}` : day
+})
 
 const time = computed(() =>
   settings.clock === 'off'

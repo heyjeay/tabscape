@@ -263,10 +263,16 @@ const version = __APP_VERSION__
                 >
               </div>
 
-              <label class="flex cursor-pointer items-center justify-between">
-                <span class="text-white/80">Date</span>
-                <input v-model="settings.date" type="checkbox" class="switch">
-              </label>
+              <div class="space-y-2">
+                <label class="flex cursor-pointer items-center justify-between">
+                  <span class="text-white/80">Date</span>
+                  <input v-model="settings.date" type="checkbox" class="switch">
+                </label>
+                <label v-if="settings.date" class="flex cursor-pointer items-center justify-between pl-4">
+                  <span class="text-white/60">Show weekday</span>
+                  <input v-model="settings.weekday" type="checkbox" class="switch">
+                </label>
+              </div>
 
               <label class="flex items-center justify-between">
                 <span class="text-white/80">Clock</span>
