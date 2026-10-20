@@ -6,3 +6,7 @@ dist-extension
 store/*.zip
 dist-site
 dist-firefox
+
+# Launch videos made by the /brag skill
+brag-output/
+brag-output-*/

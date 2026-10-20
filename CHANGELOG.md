@@ -1,5 +1,8 @@
 # What's new in Tabscape
 
+## 1.3.1 (coming next)
+- Show the weekday in the date: "Monday, October 19th" (Customize → Layout, under Date). Thanks [@montionugera](https://github.com/montionugera), #19.
+
 ## 1.3.0: Customize to your heart's content
 
 The biggest update yet, and it brings in 1.2.0 too, which never went to the stores on its own. Everything new since 1.1.2:
