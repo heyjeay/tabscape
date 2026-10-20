@@ -13,6 +13,9 @@ export const STATS_MIN_RATINGS = 3
 /** The source, where people contribute through pull requests. */
 export const GITHUB_URL = 'https://github.com/heyjeay/tabscape'
 
+/** The launch video on YouTube (its id), shown on the website and the Chrome listing. */
+export const VIDEO_ID = 'fi1AhXUkaxw'
+
 /** Where people get help and suggest features. */
 export const DISCORD_URL = 'https://discord.gg/T5bF56tvyj'
 

@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import {
-  ArrowRight, Cloud, LayoutGrid, Palette, ShieldCheck, Sparkles, Wand2
+  ArrowRight, Cloud, LayoutGrid, Palette, Play, ShieldCheck, Sparkles, Wand2
 } from 'lucide-vue-next'
 import { siDiscord, siFirefoxbrowser, siGithub, siGooglechrome } from 'simple-icons'
 import AnimatedWallpaper from '@/components/AnimatedWallpaper.vue'
 import BrandIcon from '@/components/BrandIcon.vue'
 import {
-  CHROME_STORE_URL, DISCORD_URL, FIREFOX_STORE_URL, GITHUB_URL, STATS_MIN_RATINGS, STATS_MIN_USERS
+  CHROME_STORE_URL, DISCORD_URL, FIREFOX_STORE_URL, GITHUB_URL, STATS_MIN_RATINGS, STATS_MIN_USERS, VIDEO_ID
 } from '@/config'
 import { findWallpaper } from '@/lib/wallpapers'
 import logo from '@/assets/logo.svg'
+import videoPoster from '@/assets/video-poster.jpg'
 import shotPage from '../../store/screenshots/1-new-tab.png'
 import shotCustomize from '../../store/screenshots/2-customize.png'
 import shotEdit from '../../store/screenshots/3-edit-links.png'
@@ -19,6 +20,14 @@ import shotSearch from '../../store/screenshots/5-search-clock.png'
 
 /** The website for Tabscape: what it is, a look at it, and the way into the live demo. */
 const sky = findWallpaper('stars')
+
+/**
+ * The video stays a picture until someone presses play: only then does the page
+ * load YouTube's player (its privacy-enhanced, no-cookie one), so visitors who
+ * don't watch never contact YouTube.
+ */
+const playing = ref(false)
+const videoSrc = `https://www.youtube-nocookie.com/embed/${VIDEO_ID}?autoplay=1&rel=0`
 
 /** Where to get it. Whichever browser the visitor is using comes first. */
 const STORES = [
@@ -161,6 +170,31 @@ const usage = computed(() => {
         </div>
       </section>
 
+      <!-- The launch video. -->
+      <section id="video" class="mx-auto max-w-4xl scroll-mt-6 px-5 pb-4">
+        <h2 class="text-center text-3xl font-bold sm:text-4xl">See it in 20 seconds</h2>
+        <div class="relative mt-8 aspect-video overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/15">
+          <iframe
+            v-if="playing"
+            class="absolute inset-0 h-full w-full"
+            :src="videoSrc"
+            title="Tabscape in 20 seconds"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowfullscreen
+            referrerpolicy="strict-origin-when-cross-origin"
+          />
+          <button v-else class="group absolute inset-0 block h-full w-full" aria-label="Play the Tabscape video (loads from YouTube)" @click="playing = true">
+            <img :src="videoPoster" alt="" class="h-full w-full object-cover">
+            <span class="absolute inset-0 grid place-items-center bg-black/15 transition group-hover:bg-black/0">
+              <span class="grid h-20 w-20 place-items-center rounded-full bg-white/95 text-neutral-900 shadow-2xl transition group-hover:scale-105">
+                <Play :size="34" class="ml-1" fill="currentColor" />
+              </span>
+            </span>
+          </button>
+        </div>
+        <p class="mt-3 text-center text-xs text-white/45">The video plays from YouTube once you press play.</p>
+      </section>
+
       <!-- Features -->
       <section id="features" class="mx-auto max-w-6xl scroll-mt-6 px-5 py-16">
         <h2 class="text-center text-3xl font-bold sm:text-4xl">Everything a new tab should be</h2>
@@ -230,6 +264,10 @@ const usage = computed(() => {
               In Chrome, if you turn on real site icons, Tabscape asks for access to the icons your browser has already saved
               for the sites you visit, to show them next to your links. Nothing is downloaded or sent anywhere, and turning it off hands the access back.
               Images you pick for your own links stay on your computer, and are never synced.
+            </p>
+            <p>
+              This website plays its video from YouTube only when you press play, using YouTube's privacy-enhanced mode.
+              Until then, the page doesn't contact YouTube at all.
             </p>
             <p>Custom background images load straight from the address you give. You can export or delete your setup at any time from the customize panel.</p>
           </div>
