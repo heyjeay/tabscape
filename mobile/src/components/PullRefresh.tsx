@@ -62,11 +62,11 @@ interface Props {
 export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
   const spin = useRef(new Animated.Value(0)).current
   const grow = useRef(new Animated.Value(1)).current
-  /** How far round the ring is drawn, 0 to 1, following the pull (in hundredths, so it only redraws when it shows). */
+  /** How far round the ring is drawn, 0 to 1, following the pull: whole pieces, so it only redraws when a piece is added or taken away. */
   const [amount, setAmount] = useState(0)
 
   useEffect(() => {
-    const id = pull.addListener(({ value }) => setAmount(Math.round(Math.min(1, Math.max(0, value / PULL_TO_REFRESH)) * 100) / 100))
+    const id = pull.addListener(({ value }) => setAmount(Math.round(Math.min(1, Math.max(0, value / PULL_TO_REFRESH)) * PIECES) / PIECES))
     return () => pull.removeListener(id)
   }, [pull])
 
@@ -92,6 +92,13 @@ export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
     }
   }, [refreshing, spin])
 
+  // Built once, not on every redraw (that would unhook and hook up the running spin natively).
+  const motion = useMemo(() => ({
+    opacity: pull.interpolate({ inputRange: [2, 12], outputRange: [0, 1], extrapolate: 'clamp' }),
+    drop: pull.interpolate({ inputRange: [0, PULL_TO_REFRESH * 2], outputRange: [0, 60], extrapolate: 'clamp' }),
+    rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+  }), [pull, spin])
+
   const drawn = refreshing ? 0.75 : amount
   const arcs = useMemo(() => pieces(drawn), [drawn])
   // See-through at first, solid once it's pulled all the way. Set on the view, not each piece,
@@ -107,17 +114,15 @@ export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
         styles.ring,
         {
           top,
-          opacity: refreshing ? 1 : pull.interpolate({ inputRange: [2, 12], outputRange: [0, 1], extrapolate: 'clamp' }),
-          transform: [
-            { translateY: refreshing ? 24 : pull.interpolate({ inputRange: [0, PULL_TO_REFRESH * 2], outputRange: [0, 60], extrapolate: 'clamp' }) }
-          ]
+          opacity: refreshing ? 1 : motion.opacity,
+          transform: [{ translateY: refreshing ? 24 : motion.drop }]
         }
       ]}
     >
       <Animated.View
         style={{
           opacity: brightness,
-          transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }, { scale: grow }]
+          transform: [{ rotate: motion.rotate }, { scale: grow }]
         }}
       >
         <Svg width={SIZE} height={SIZE}>

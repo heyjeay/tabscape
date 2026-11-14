@@ -33,8 +33,9 @@ export const SettingsSheet = ({ visible, onClose, onImportQueued }: Props) => {
   /** A backup exported from Tabscape on a computer (Customize → Sync & backup → Export). */
   const importLinks = async () => {
     const picked = await DocumentPicker.getDocumentAsync({ type: ['application/json', 'public.json', 'text/plain'], copyToCacheDirectory: true })
-    if (picked.canceled || !picked.assets?.[0]) return
-    if (await queueImport(picked.assets[0].uri)) {
+      .catch(() => null)
+    if (!picked || picked.canceled || !picked.assets?.[0]) return
+    if (await queueImport(picked.assets[0].uri).catch(() => false)) {
       onImportQueued()
     } else {
       Alert.alert("That isn't a Tabscape backup", 'In Tabscape on your computer, open Customize → Sync & backup → Export, and pick the file it saves.')

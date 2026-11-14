@@ -40,17 +40,25 @@ export const useHero = () => {
   const progress = useRef(new Animated.Value(0)).current
   const fade = useRef(new Animated.Value(1)).current
 
+  /** The flight in the air now; one that's been replaced by a newer one mustn't clear it away. */
+  const latest = useRef(0)
+
   const fly = (tab: Tab, from: Rect, to: Rect, { radius = 30, fadeAtEnd = false } = {}) =>
     new Promise<void>(resolve => {
+      const id = ++latest.current
       progress.setValue(0)
       fade.setValue(1)
       setFlight({ tab, from, to, radius })
       requestAnimationFrame(() => {
-        Animated.spring(progress, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 2 }).start(() => {
+        Animated.spring(progress, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 2 }).start(({ finished }) => {
           resolve()
+          // Cut short by a newer flight: that one is in charge of the picture now.
+          if (!finished || id !== latest.current) return
           // Landing on the page: linger a moment while the page underneath draws, then let go.
           if (fadeAtEnd) {
-            Animated.timing(fade, { toValue: 0, duration: 200, delay: 180, useNativeDriver: true }).start(() => setFlight(null))
+            Animated.timing(fade, { toValue: 0, duration: 200, delay: 180, useNativeDriver: true }).start(() => {
+              if (id === latest.current) setFlight(null)
+            })
           } else {
             setFlight(null)
           }

@@ -13,16 +13,29 @@ const IMPORT_KEY = 'tabscape.import'
 
 export const loadSavedPages = () => load<SavedPage[]>(PAGES_KEY, [])
 
-export const addSavedPage = async (page: SavedPage) => {
-  const all = await loadSavedPages()
-  await save(PAGES_KEY, [...all, page])
+/**
+ * Changes to the list go one at a time, so saving a page while a start page is taking the
+ * list in can't lose it or hand it over twice.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+const inTurn = <T,>(change: () => Promise<T>) => {
+  const turn = queue.then(change)
+  queue = turn.catch(() => {})
+  return turn
 }
 
+export const addSavedPage = (page: SavedPage) =>
+  inTurn(async () => {
+    const all = await loadSavedPages()
+    await save(PAGES_KEY, [...all, page])
+  })
+
 /** The start page took the first `count`; anything saved meanwhile stays for next time. */
-export const removeDeliveredPages = async (count: number) => {
-  const all = await loadSavedPages()
-  await save(PAGES_KEY, all.slice(count))
-}
+export const removeDeliveredPages = (count: number) =>
+  inTurn(async () => {
+    const all = await loadSavedPages()
+    await save(PAGES_KEY, all.slice(count))
+  })
 
 export const loadPendingImport = () => load<string | null>(IMPORT_KEY, null)
 

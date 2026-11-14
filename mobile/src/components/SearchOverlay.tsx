@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
@@ -35,6 +35,8 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
   const dim = useRef(new Animated.Value(0)).current
   const lift = useRef(new Animated.Value(insets.bottom)).current
   const drop = useRef(new Animated.Value(400)).current
+  // Built once: rebuilt on every keystroke, it would be unhooked and hooked up again natively.
+  const rise = useMemo(() => Animated.add(Animated.multiply(lift, -1), drop), [lift, drop])
 
   useEffect(() => {
     if (visible) {
@@ -101,7 +103,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
       </Animated.View>
 
       <Animated.View
-        style={[styles.wrap, { transform: [{ translateY: Animated.add(Animated.multiply(lift, -1), drop) }] }]}
+        style={[styles.wrap, { transform: [{ translateY: rise }] }]}
       >
         <Glass style={styles.panel}>
           <Glass style={styles.field}>

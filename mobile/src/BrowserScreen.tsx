@@ -43,7 +43,7 @@ const DELIVERY_TRIES = 10
 export const BrowserScreen = () => {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
-  const { tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll } = useTabs()
+  const { restored, tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll } = useTabs()
   const web = useRef<TabWebViewHandle>(null)
   const page = useRef<ComponentRef<typeof View>>(null)
   const stack = useRef<ComponentRef<typeof View>>(null)
@@ -98,9 +98,14 @@ export const BrowserScreen = () => {
     setRefreshing(true)
     web.current?.reload()
   }
+  const lastPull = useRef(0)
   const feelPull = (y: number) => {
     const distance = Math.max(0, -(y + insets.top))
-    pull.setValue(distance)
+    // Most scrolling is nowhere near the top: only tell the ring when the pull changes.
+    if (distance !== lastPull.current) {
+      lastPull.current = distance
+      pull.setValue(distance)
+    }
     if (distance <= 2) {
       pullLevel.current = 0
       // Back at the top after a full pull, and the page never said you let go: reload now.
@@ -172,10 +177,14 @@ export const BrowserScreen = () => {
       else if (reloadSeen.current) setRefreshing(false)
     }
     updateTab(currentId, { url: state.url, title: state.url ? state.title : 'Start page' })
-    // Once it's drawn; tied to this tab, in case another is showing by then.
+    // A picture once it's drawn. A page reports several times as it finishes, so only the last
+    // of those takes one; tied to this tab, in case another is showing by then.
+    clearTimeout(pictureTimer.current)
     const id = currentId
-    if (!state.loading) setTimeout(() => id === currentIdRef.current && snapshot(id), 400)
+    if (!state.loading) pictureTimer.current = setTimeout(() => id === currentIdRef.current && snapshot(id), 400)
   }
+  const pictureTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(pictureTimer.current), [])
 
   /** A start page is up: offer it anything waiting (saved pages, a backup to import). */
   const deliver = async () => {
@@ -239,6 +248,7 @@ export const BrowserScreen = () => {
   const openTabs = async () => {
     showBar(true)
     await snapshot()
+    picking.current = false
     tabsAppear.setValue(0)
     setHiddenCards([currentId])
     growing.current = true
@@ -252,7 +262,8 @@ export const BrowserScreen = () => {
     const from = (await measure(stack)) ?? { x: 24, y: height - barRoom, width: 40, height: 50 }
     Animated.timing(tabsAppear, { toValue: 1, duration: 260, useNativeDriver: true }).start()
     await hero.fly(current, from, card, { radius: 22 })
-    setHiddenCards([])
+    // Unless a card was picked mid-flight: that keeps its own cards hidden.
+    if (!picking.current) setHiddenCards([])
   }
 
   /** Closes the tab browser without a flight (for +, settings, close all). */
@@ -264,7 +275,9 @@ export const BrowserScreen = () => {
    * Picks a tab: its card grows to fill the screen while the tab browser fades away under it,
    * and, if it's a different tab, the old one's card shrinks back into the tab button, like Arc.
    */
+  const picking = useRef(false)
   const openFromCard = async (id: string, card: Rect | null) => {
+    picking.current = true
     const tab = tabs.find(t => t.id === id)
     const old = current
     const [full, oldCard, button] = await Promise.all([
@@ -278,6 +291,7 @@ export const BrowserScreen = () => {
     hero.fly(tab, card, full ?? { x: 0, y: 0, width, height }, { radius: 48, fadeAtEnd: true })
     if (oldCard && button) shrink.fly(old, oldCard, button, { radius: 9 })
     Animated.timing(tabsAppear, { toValue: 0, duration: 240, useNativeDriver: true }).start(() => {
+      picking.current = false
       setTabsOpen(false)
       setHiddenCards([])
     })
@@ -286,7 +300,8 @@ export const BrowserScreen = () => {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
       <View ref={page} style={styles.page} collapsable={false}>
-        <TabWebView
+        {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first. */}
+        {restored && <TabWebView
           key={current.id}
           ref={web}
           tab={current}
@@ -297,7 +312,7 @@ export const BrowserScreen = () => {
           onMessage={onMessage}
           onNewWindow={url => openTab(url)}
           onScroll={onScroll}
-        />
+        />}
       </View>
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
@@ -377,7 +392,7 @@ export const BrowserScreen = () => {
           hiddenIds={hiddenCards}
           appear={tabsAppear}
           onCurrentPlaced={growIntoCard}
-          registerCard={(id, ref) => cards.set(id, ref)}
+          registerCard={(id, ref) => (ref ? cards.set(id, ref) : cards.delete(id))}
           onSelect={openFromCard}
           onClose={closeTab}
           onCloseAll={() => {

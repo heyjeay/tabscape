@@ -62,7 +62,7 @@ export const PageActions = (props: Props) => {
               label="Copy link"
               disabled={!url}
               onPress={() => {
-                if (url) Clipboard.setStringAsync(url)
+                if (url) Clipboard.setStringAsync(url).catch(() => {})
                 setCopied(true)
               }}
             />
@@ -77,8 +77,8 @@ export const PageActions = (props: Props) => {
           <View style={styles.tiles}>
             <Tile sf="doc.text.magnifyingglass" fallback="search" label="Find on Page" onPress={props.onFind} disabled={!url} />
             <Tile sf="square.grid.2x2" fallback="grid-outline" label="Add to Tabscape" onPress={props.onAddToTabscape} disabled={!url} />
-            <Tile sf="square.and.arrow.up" fallback="share-outline" label="Share" onPress={() => url && Share.share({ url, message: url })} disabled={!url} />
-            <Tile sf="safari" fallback="compass-outline" label="Safari" onPress={() => url && Linking.openURL(url)} disabled={!url} />
+            <Tile sf="square.and.arrow.up" fallback="share-outline" label="Share" onPress={() => url && Share.share({ url, message: url }).catch(() => {})} disabled={!url} />
+            <Tile sf="safari" fallback="compass-outline" label="Safari" onPress={() => url && Linking.openURL(url).catch(() => {})} disabled={!url} />
           </View>
 
           <Row sf="gearshape" fallback="settings-outline" label="Settings" onPress={props.onSettings} />

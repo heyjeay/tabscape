@@ -35,9 +35,19 @@ export const TabPicture = ({ tab, letterSize = 40, style }: { tab: Tab; letterSi
  * The site's own icon, fetched from the site itself (as the page already did), or its
  * colour and letter when it hasn't one. The start page gets the ✦.
  */
+/** The site's host, or null for the start page or an address that can't be read. */
+const hostFor = (url: string | null) => {
+  if (!url) return null
+  try {
+    return new URL(url).host || null
+  } catch {
+    return null
+  }
+}
+
 export const Favicon = ({ tab, size = 22 }: { tab: Tab; size?: number }) => {
   const [failed, setFailed] = useState(false)
-  const host = tab.url ? new URL(tab.url).host : null
+  const host = hostFor(tab.url)
   const box = { width: size, height: size, borderRadius: size * 0.27 }
   if (!host || failed) {
     return (

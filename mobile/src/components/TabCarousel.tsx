@@ -25,8 +25,8 @@ interface Props {
   appear: Animated.Value
   /** The middle card has been laid out: where it is, for the picture flying into it. */
   onCurrentPlaced: (rect: Rect) => void
-  /** Each card's page, so the screen can find where any of them is. */
-  registerCard: (id: string, ref: RefObject<ViewRef | null>) => void
+  /** Each card's page, so the screen can find where any of them is (null once the card's gone). */
+  registerCard: (id: string, ref: RefObject<ViewRef | null> | null) => void
   onSelect: (id: string, rect: Rect | null) => void
   onClose: (id: string) => void
   onCloseAll: () => void
@@ -37,7 +37,7 @@ interface Props {
 /** What the cards call back with. Made once, so the cards only redraw when they themselves change. */
 interface Handlers {
   select: (id: string, rect: Rect | null) => void
-  register: (id: string, ref: RefObject<ViewRef | null>) => void
+  register: (id: string, ref: RefObject<ViewRef | null> | null) => void
   placed: (rect: Rect) => void
   close: (id: string) => void
 }
@@ -73,7 +73,7 @@ export const TabCarousel = (props: Props) => {
   const scroller = useRef<ComponentRef<typeof Animated.ScrollView>>(null)
   /** The card in the middle right now. */
   const middle = useRef(start)
-  /** When a card behind the middle last closed: the view and the cards after it move back a place together, at once. */
+  /** Counts closes of cards behind the middle: then the view and the cards after it move back a place together, at once. */
   const [jumpBack, setJumpBack] = useState(0)
 
   // The latest props, for handlers that never change.
@@ -108,7 +108,14 @@ export const TabCarousel = (props: Props) => {
     const index = shown.findIndex(t => t.id === id)
     if (index < 0) return
     if (shown.length === 1) {
-      // The only tab: nothing moves; it closes now and a fresh start page takes its place.
+      // The last card showing: close the ones still waiting too, then this one, and a fresh
+      // start page takes their place.
+      pending.current.forEach((timer, waiting) => {
+        clearTimeout(timer)
+        latest.current.onClose(waiting)
+      })
+      pending.current.clear()
+      setGone([])
       latest.current.onClose(id)
       return
     }
@@ -123,7 +130,7 @@ export const TabCarousel = (props: Props) => {
     }
     if (index < middle.current) {
       middle.current -= 1
-      setJumpBack(Date.now())
+      setJumpBack(n => n + 1)
     }
     setGone(all => [...all, id])
     closeLater(id, 450)
@@ -137,6 +144,16 @@ export const TabCarousel = (props: Props) => {
     if (jumpBack) scroller.current?.scrollTo({ x: middle.current * cardWidth, animated: false })
   }, [jumpBack])
 
+  // Built once: a new one each render would be unhooked and hooked up again natively.
+  const widthRef = useRef(cardWidth)
+  widthRef.current = cardWidth
+  const onScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+    useNativeDriver: true,
+    listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      middle.current = Math.round(event.nativeEvent.contentOffset.x / widthRef.current)
+    }
+  }), [scrollX])
+
   const handlers = useMemo<Handlers>(() => ({
     select: (id, rect) => latest.current.onSelect(id, rect),
     register: (id, ref) => latest.current.registerCard(id, ref),
@@ -147,7 +164,7 @@ export const TabCarousel = (props: Props) => {
   const confirmCloseAll = () =>
     Alert.alert('Close all tabs?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: `Close all ${tabs.length} tabs`, style: 'destructive', onPress: props.onCloseAll }
+      { text: `Close all ${shown.length} tabs`, style: 'destructive', onPress: props.onCloseAll }
     ])
 
   return (
@@ -168,12 +185,7 @@ export const TabCarousel = (props: Props) => {
         // taking one away changes no layout (which would jump): the others glide into the gap.
         contentContainerStyle={{ width: shown.length * cardWidth + side * 2, height: area }}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-          useNativeDriver: true,
-          listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-            middle.current = Math.round(event.nativeEvent.contentOffset.x / cardWidth)
-          }
-        })}
+        onScroll={onScroll}
       >
         {shown.map((tab, index) => (
           <StackedCard
@@ -235,17 +247,21 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
   /** Where along the row it is (points), following its place as cards before it close. */
   const place = useRef(new Animated.Value(index * width)).current
   const placedAt = useRef(index * width)
+  const jumpsSeen = useRef(jumpBack)
   useLayoutEffect(() => {
     const to = index * width
+    const jump = jumpBack !== jumpsSeen.current
+    jumpsSeen.current = jumpBack
     if (to === placedAt.current) return
     placedAt.current = to
     // Moving back along with the view (a card behind the middle closed): at once, in step with it.
-    if (Date.now() - jumpBack < 100) place.setValue(to)
+    if (jump) place.setValue(to)
     else Animated.spring(place, { toValue: to, useNativeDriver: true, speed: 15, bounciness: 3 }).start()
-  }, [index, width])
-  // Once: the ref object itself never changes.
+  }, [index, width, jumpBack])
+  // Once (the ref object itself never changes), and let go of when the card goes.
   useEffect(() => {
     handlers.register(tab.id, page)
+    return () => handlers.register(tab.id, null)
   }, [])
   // As in Arc: the next tab overlaps the middle card's right edge a little; the one before it
   // tucks in behind with about a third of it showing, barely smaller; further ones stack up there.
