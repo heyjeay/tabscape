@@ -1,11 +1,13 @@
-import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
+import type { SFSymbol } from 'expo-symbols'
+import type { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
 import { Linking, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import { hostOf } from '../lib/address'
 import { Glass } from './Glass'
+import { Icon } from './Icon'
 
 interface Props {
   visible: boolean
@@ -20,11 +22,14 @@ interface Props {
   onEditAddress: () => void
   onFind: () => void
   onAddToTabscape: () => void
+  onSettings: () => void
 }
 
+type Fallback = keyof typeof Ionicons.glyphMap
+
 /**
- * What tapping the site's name opens, like Arc: back, forward, the address, copy and reload
- * along the top, then the things you can do with the page.
+ * What ⌃ opens, laid out like Arc's: back, forward, the address, copy and reload in a capsule,
+ * four things to do with the page, then settings.
  */
 export const PageActions = (props: Props) => {
   const { visible, url, onClose } = props
@@ -38,65 +43,89 @@ export const PageActions = (props: Props) => {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <Glass style={[styles.panel, { paddingBottom: insets.bottom + 18 }]}>
-        <View style={styles.handle} />
+      <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <Glass style={styles.panel}>
+          <Glass style={styles.capsule}>
+            <RoundIcon sf="chevron.left" fallback="chevron-back" label="Back" disabled={!props.canGoBack} onPress={props.onBack} />
+            <RoundIcon sf="chevron.right" fallback="chevron-forward" label="Forward" disabled={!props.canGoForward} onPress={props.onForward} />
+            <Pressable style={styles.address} onPress={props.onEditAddress} accessibilityLabel="Edit address">
+              <Text style={styles.addressText} numberOfLines={1}>{url ? hostOf(url) : 'Tabscape'}</Text>
+            </Pressable>
+            <RoundIcon
+              sf={copied ? 'checkmark' : 'link'}
+              fallback={copied ? 'checkmark' : 'link'}
+              label="Copy link"
+              disabled={!url}
+              onPress={() => {
+                if (url) Clipboard.setStringAsync(url)
+                setCopied(true)
+              }}
+            />
+            <RoundIcon
+              sf={props.loading ? 'xmark' : 'arrow.clockwise'}
+              fallback={props.loading ? 'close' : 'refresh'}
+              label={props.loading ? 'Stop' : 'Reload'}
+              onPress={props.onReloadOrStop}
+            />
+          </Glass>
 
-        <View style={styles.addressRow}>
-          <Icon icon="chevron-back" name="Back" disabled={!props.canGoBack} onPress={props.onBack} />
-          <Icon icon="chevron-forward" name="Forward" disabled={!props.canGoForward} onPress={props.onForward} />
-          <Pressable style={styles.address} onPress={props.onEditAddress} accessibilityLabel="Edit address">
-            <Text style={styles.addressText} numberOfLines={1}>{hostOf(url)}</Text>
-          </Pressable>
-          <Icon
-            icon={copied ? 'checkmark' : 'link'}
-            name="Copy link"
-            onPress={() => {
-              if (url) Clipboard.setStringAsync(url)
-              setCopied(true)
-            }}
-          />
-          <Icon icon={props.loading ? 'close' : 'refresh'} name={props.loading ? 'Stop' : 'Reload'} onPress={props.onReloadOrStop} />
-        </View>
+          <View style={styles.tiles}>
+            <Tile sf="doc.text.magnifyingglass" fallback="search" label="Find on Page" onPress={props.onFind} disabled={!url} />
+            <Tile sf="square.grid.2x2" fallback="grid-outline" label="Add to Tabscape" onPress={props.onAddToTabscape} disabled={!url} />
+            <Tile sf="square.and.arrow.up" fallback="share-outline" label="Share" onPress={() => url && Share.share({ url, message: url })} disabled={!url} />
+            <Tile sf="safari" fallback="compass-outline" label="Safari" onPress={() => url && Linking.openURL(url)} disabled={!url} />
+          </View>
 
-        <View style={styles.tiles}>
-          <Tile icon="document-text-outline" label="Find on Page" onPress={props.onFind} />
-          <Tile icon="grid-outline" label="Add to Tabscape" onPress={props.onAddToTabscape} disabled={!url} />
-          <Tile icon="share-outline" label="Share" onPress={() => url && Share.share({ url, message: url })} disabled={!url} />
-          <Tile icon="compass-outline" label="Open in Safari" onPress={() => url && Linking.openURL(url)} disabled={!url} />
-        </View>
-      </Glass>
+          <Row sf="gearshape" fallback="settings-outline" label="Settings" onPress={props.onSettings} />
+        </Glass>
+      </View>
     </Modal>
   )
 }
 
-type IconName = keyof typeof Ionicons.glyphMap
-
-const Icon = ({ icon, name, onPress, disabled }: { icon: IconName; name: string; onPress: () => void; disabled?: boolean }) => (
-  <Pressable onPress={onPress} disabled={disabled} style={[styles.icon, disabled && styles.disabled]} accessibilityLabel={name} hitSlop={4}>
-    <Ionicons name={icon} size={22} color={colors.text} />
+const RoundIcon = ({ sf, fallback, label, onPress, disabled }: {
+  sf: SFSymbol; fallback: Fallback; label: string; onPress: () => void; disabled?: boolean
+}) => (
+  <Pressable onPress={onPress} disabled={disabled} style={[styles.icon, disabled && styles.disabled]} accessibilityLabel={label} hitSlop={4}>
+    <Icon sf={sf} fallback={fallback} size={22} />
   </Pressable>
 )
 
-const Tile = ({ icon, label, onPress, disabled }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) => (
-  <Pressable onPress={onPress} disabled={disabled} style={[styles.tile, disabled && styles.disabled]} accessibilityLabel={label}>
-    <View style={styles.tileBox}>
-      <Ionicons name={icon} size={26} color={colors.text} />
-    </View>
-    <Text style={styles.tileLabel} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
+const Tile = ({ sf, fallback, label, onPress, disabled }: {
+  sf: SFSymbol; fallback: Fallback; label: string; onPress: () => void; disabled?: boolean
+}) => (
+  // Dimmed by colour, not opacity: Liquid Glass doesn't render faded.
+  <Pressable onPress={onPress} disabled={disabled} style={styles.tile} accessibilityLabel={label}>
+    <Glass style={styles.tileBox} interactive={!disabled}>
+      <Icon sf={sf} fallback={fallback} size={28} weight="regular" color={disabled ? colors.dim : colors.text} />
+    </Glass>
+    <Text style={[styles.tileLabel, disabled && { color: colors.dim }]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
+  </Pressable>
+)
+
+const Row = ({ sf, fallback, label, onPress }: { sf: SFSymbol; fallback: Fallback; label: string; onPress: () => void }) => (
+  <Pressable onPress={onPress} accessibilityLabel={label}>
+    <Glass style={styles.row} interactive>
+      <Icon sf={sf} fallback={fallback} size={22} />
+      <Text style={styles.rowText}>{label}</Text>
+      <Icon sf="chevron.right" fallback="chevron-forward" size={16} color={colors.secondary} />
+    </Glass>
   </Pressable>
 )
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' },
-  panel: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 18, paddingTop: 10, gap: 18 },
-  handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
-  addressRow: { flexDirection: 'row', alignItems: 'center', height: 58, borderRadius: 29, backgroundColor: colors.faint, paddingHorizontal: 6 },
-  icon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  backdrop: { flex: 1 },
+  wrap: { paddingHorizontal: 8 },
+  panel: { borderRadius: 38, padding: 16, gap: 18 },
+  capsule: { flexDirection: 'row', alignItems: 'center', height: 62, borderRadius: 31, paddingHorizontal: 8 },
+  icon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   address: { flex: 1, alignItems: 'center' },
-  addressText: { color: colors.text, fontSize: 17, fontWeight: '600' },
+  addressText: { color: colors.text, fontSize: 18, fontWeight: '500' },
   tiles: { flexDirection: 'row', gap: 12 },
   tile: { flex: 1, alignItems: 'center', gap: 8 },
-  tileBox: { alignSelf: 'stretch', height: 74, borderRadius: 20, backgroundColor: colors.faint, alignItems: 'center', justifyContent: 'center' },
-  tileLabel: { color: colors.text, fontSize: 12 },
-  disabled: { opacity: 0.35 }
+  tileBox: { alignSelf: 'stretch', aspectRatio: 1, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  tileLabel: { color: colors.text, fontSize: 13, fontWeight: '500' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 58, borderRadius: 20, paddingHorizontal: 18 },
+  rowText: { flex: 1, color: colors.text, fontSize: 17 },
+  disabled: { opacity: 0.4 }
 })

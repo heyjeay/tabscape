@@ -26,6 +26,8 @@ export interface TabWebViewHandle {
 
 interface Props {
   tab: Tab
+  /** Room at the bottom for the floating bar, so the end of a page can scroll above it. */
+  bottomInset: number
   onState: (state: PageState) => void
   onProgress: (progress: number) => void
   /** A start page finished loading (it may have pages to take in). */
@@ -58,7 +60,7 @@ const WEB = /^(https?|file|about|data|blob):/i
  * what it loads only changes when asked (load), never because the address it reports changed.
  */
 export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebView(
-  { tab, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow },
+  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow },
   ref
 ) {
   const web = useRef<WebViewInstance>(null)
@@ -98,6 +100,9 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       originWhitelist={['*']}
       allowingReadAccessToURL={startPageSource.baseUrl}
       style={{ flex: 1, backgroundColor: 'transparent' }}
+      contentInset={{ bottom: bottomInset }}
+      automaticallyAdjustContentInsets={false}
+      contentInsetAdjustmentBehavior="never"
       allowsBackForwardNavigationGestures
       allowsInlineMediaPlayback
       decelerationRate="normal"

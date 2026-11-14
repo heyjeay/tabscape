@@ -126,12 +126,27 @@ export const useAutoSort = () => {
 }
 
 /**
- * Lets Tabscape Browser (the iPhone and iPad app) hand over the pages saved with
- * "Add to Tabscape": it calls window.tabscapeAddPages([{ url, title }]) once the page is up.
+ * Lets Tabscape Browser (the iPhone and iPad app) hand things to the page once it's up:
+ * pages saved with "Add to Tabscape" (window.tabscapeAddPages([{ url, title }])), and a
+ * backup file to import (window.tabscapeImport(json), true if it was one).
  */
 export const listenForApp = () => {
   const { addFromApp } = useAutoSort()
-  ;(window as unknown as { tabscapeAddPages: (pages: NewBookmark[]) => number }).tabscapeAddPages = addFromApp
+  const { importData } = useStartpage()
+  const hooks = window as unknown as {
+    tabscapeAddPages: (pages: NewBookmark[]) => number
+    tabscapeImport: (json: string) => boolean
+  }
+  hooks.tabscapeAddPages = addFromApp
+  hooks.tabscapeImport = json => {
+    try {
+      importData(json)
+      log('imported a backup from the app')
+      return true
+    } catch {
+      return false
+    }
+  }
 }
 
 /** Run the sorter for as long as the page is open: on open, and whenever it comes back into view. */

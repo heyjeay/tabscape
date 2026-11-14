@@ -14,9 +14,8 @@
     "android": {
       "package": "io.github.heyjeay.tabscape",
       "adaptiveIcon": {
-        "backgroundColor": "#14141c",
+        "backgroundColor": "#070a1f",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -26,7 +25,15 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 150,
+          "backgroundColor": "#14141c"
+        }
+      ]
     ]
   }
 }

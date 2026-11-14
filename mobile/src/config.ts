@@ -11,5 +11,6 @@ export const colors = {
   text: '#ffffff',
   secondary: 'rgba(255,255,255,0.6)',
   faint: 'rgba(255,255,255,0.12)',
+  dim: 'rgba(255,255,255,0.32)',
   card: '#2a2a33'
 }

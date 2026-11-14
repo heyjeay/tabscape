@@ -1,9 +1,8 @@
-import { Ionicons } from '@expo/vector-icons'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { colors } from '../config'
-import { hostOf } from '../lib/address'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { Tab } from '../useTabs'
 import { Glass } from './Glass'
+import { Icon } from './Icon'
 import { TabPicture } from './TabPicture'
 
 interface Props {
@@ -11,36 +10,46 @@ interface Props {
   tabCount: number
   progress: number
   loading: boolean
+  bottomInset: number
   onTabs: () => void
-  onAddress: () => void
   onNewTab: () => void
+  onMenu: () => void
 }
 
-/** The bar along the bottom: tilted tab pictures, the site you're on, and +. */
-export const BottomBar = ({ tab, tabCount, progress, loading, onTabs, onAddress, onNewTab }: Props) => (
-  <View style={styles.bar}>
+/** The bar's height above the safe area, so the page can leave room for it. */
+export const BAR_HEIGHT = 78
+
+/**
+ * Arc's bar, floating over the page in Liquid Glass: the tab pictures on the left,
+ * a wide + in the middle, and ⌃ for everything you can do with the page.
+ */
+export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, onTabs, onNewTab, onMenu }: Props) => (
+  <View style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12) }]} pointerEvents="box-none">
+    {/* A soft dark fade behind the controls, so they read over any page. */}
+    <LinearGradient
+      colors={['transparent', 'rgba(10,10,16,0.55)']}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
     <View style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0 }]} />
     <View style={styles.row}>
-      <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={8}>
+      <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
         <TabStack tab={tab} count={tabCount} />
       </Pressable>
 
-      <Pressable onPress={onAddress} style={styles.pillWrap} accessibilityLabel={tab.url ? `${hostOf(tab.url)}, page actions` : 'Search or enter address'}>
-        <Glass style={styles.pill}>
-          <View style={styles.pillInner}>
-            {!tab.url && <Ionicons name="search" size={16} color={colors.secondary} />}
-            <Text numberOfLines={1} style={[styles.pillText, !tab.url && styles.placeholder]}>
-              {tab.url ? hostOf(tab.url) : 'Search or enter address'}
-            </Text>
-          </View>
+      <Pressable onPress={onNewTab} accessibilityLabel="New tab">
+        <Glass style={styles.plus} interactive>
+          <Icon sf="plus" fallback="add" size={26} weight="semibold" />
         </Glass>
       </Pressable>
 
-      <Pressable onPress={onNewTab} accessibilityLabel="New tab" hitSlop={8}>
-        <Glass style={styles.circle}>
-          <Ionicons name="add" size={26} color={colors.text} />
-        </Glass>
-      </Pressable>
+      <View style={[styles.side, styles.right]}>
+        <Pressable onPress={onMenu} accessibilityLabel="Page actions" hitSlop={10}>
+          <Glass style={styles.circle} interactive>
+            <Icon sf="chevron.up" fallback="chevron-up" size={22} weight="semibold" />
+          </Glass>
+        </Pressable>
+      </View>
     </View>
   </View>
 )
@@ -49,22 +58,20 @@ export const BottomBar = ({ tab, tabCount, progress, loading, onTabs, onAddress,
 const TabStack = ({ tab, count }: { tab: Tab; count: number }) => (
   <View style={styles.stack}>
     {count > 1 && <View style={[styles.card, styles.behind]} />}
-    <TabPicture tab={tab} letterSize={16} style={[styles.card, styles.front]} />
+    <TabPicture tab={tab} letterSize={18} style={[styles.card, styles.front]} />
   </View>
 )
 
 const styles = StyleSheet.create({
-  bar: { backgroundColor: colors.background, paddingHorizontal: 14, paddingTop: 6 },
-  progress: { position: 'absolute', top: 0, left: 0, height: 2, backgroundColor: '#fff' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  pillWrap: { flex: 1 },
-  pill: { height: 48, borderRadius: 24, justifyContent: 'center', paddingHorizontal: 18 },
-  pillInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  pillText: { color: colors.text, fontSize: 16, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
-  placeholder: { color: colors.secondary, fontWeight: '400' },
-  circle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  stack: { width: 56, height: 52, alignItems: 'center', justifyContent: 'center' },
-  card: { position: 'absolute', width: 34, height: 42, borderRadius: 7, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
-  behind: { backgroundColor: colors.card, transform: [{ rotate: '-14deg' }, { translateX: -6 }, { translateY: 4 }] },
-  front: { transform: [{ rotate: '9deg' }, { translateX: 5 }, { translateY: -2 }] }
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 14, paddingHorizontal: 22 },
+  progress: { position: 'absolute', top: 0, left: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
+  row: { height: BAR_HEIGHT - 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  side: { width: 76 },
+  right: { alignItems: 'flex-end' },
+  plus: { width: 124, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
+  circle: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
+  stack: { width: 64, height: 58, alignItems: 'center', justifyContent: 'center' },
+  card: { position: 'absolute', width: 40, height: 50, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
+  behind: { backgroundColor: '#2c2c35', transform: [{ translateX: -7 }, { translateY: 5 }, { rotate: '-14deg' }] },
+  front: { transform: [{ translateX: 6 }, { translateY: -2 }, { rotate: '10deg' }] }
 })
