@@ -13,7 +13,7 @@ import { usePages } from '@/composables/usePages'
 const { state, moveLink, removeLink, addSection, removeSection } = useStartpage()
 const pages = usePages()
 const pageName = (s: { page?: string }) => state.pages.find(p => p.id === pageOf(s as never))?.name ?? ''
-const { justAdded, dismiss } = useAutoSort()
+const { justAdded, source, dismiss } = useAutoSort()
 
 /** Shown for this long, unless the pointer or keyboard is on the note. */
 const SHOW_MS = 12_000
@@ -100,7 +100,7 @@ const createFor = (linkId: string, from: string) => {
     >
       <div class="mb-2 flex items-center justify-between px-1">
         <span class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/50">
-          <Bookmark :size="13" /> From your bookmarks
+          <Bookmark :size="13" /> {{ source === 'app' ? 'Added to Tabscape' : 'From your bookmarks' }}
         </span>
         <button class="icon-btn -m-1" title="Close" aria-label="Close" @click="dismiss">
           <X :size="15" />

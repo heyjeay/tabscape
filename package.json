@@ -10,7 +10,8 @@
     "build:extension": "vue-tsc --noEmit && vite build --mode extension",
     "dev:site": "vite --mode site",
     "build:site": "vue-tsc --noEmit && vite build --mode site",
-    "build:firefox": "vue-tsc --noEmit && vite build --mode firefox"
+    "build:firefox": "vue-tsc --noEmit && vite build --mode firefox",
+    "build:mobile": "vue-tsc --noEmit && vite build && node scripts/build-mobile.mjs"
   },
   "dependencies": {
     "@fontsource-variable/caveat": "^5.3.0",

@@ -10,3 +10,6 @@ dist-firefox
 # Launch videos made by the /brag skill
 brag-output/
 brag-output-*/
+
+# The Expo app's copy of the start page, made by npm run build:mobile
+mobile/src/startpage.generated.ts

@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Tabscape",
+    "slug": "tabscape",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#14141c",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "io.github.heyjeay.tabscape"
+    },
+    "android": {
+      "package": "io.github.heyjeay.tabscape",
+      "adaptiveIcon": {
+        "backgroundColor": "#14141c",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

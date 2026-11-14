@@ -4,6 +4,7 @@ import { useStartpage, type SortedEntry } from './useStartpage'
 import {
   bookmarksSince, bookmarksSupported, hasBookmarkAccess, releaseBookmarkAccess, requestBookmarkAccess
 } from '@/lib/bookmarks'
+import type { NewBookmark } from '@/lib/autosort'
 
 /**
  * Sorting new bookmarks into sections. It runs when a new tab opens and when the
@@ -32,6 +33,8 @@ const local = {
 const enabled = ref(bookmarksSupported() && local.get(ENABLED_KEY) === '1')
 /** What was just sorted, for the "Saved to …" note; `existing` ones were already on the page. Cleared when the note closes. */
 const justAdded = ref<SortedEntry[]>([])
+/** Where they came from: new bookmarks, or pages saved with "Add to Tabscape" in Tabscape Browser. */
+const source = ref<'bookmarks' | 'app'>('bookmarks')
 let running = false
 
 export const useAutoSort = () => {
@@ -44,7 +47,10 @@ export const useAutoSort = () => {
     if (newest > (Number(local.get(SEEN_KEY)) || 0)) local.set(SEEN_KEY, String(newest))
     // Oldest first, so they land in the order they were saved.
     const added = addSortedBookmarks(found.reverse())
-    if (added.length) justAdded.value = added
+    if (added.length) {
+      source.value = 'bookmarks'
+      justAdded.value = added
+    }
     return added.filter(a => !a.existing).length
   }
 
@@ -103,9 +109,29 @@ export const useAutoSort = () => {
     }
   }
 
+  /** Pages saved with "Add to Tabscape" in Tabscape Browser: sorted like bookmarks, whether or not sorting is on. */
+  const addFromApp = (pages: NewBookmark[]) => {
+    const added = addSortedBookmarks(pages.filter(p => p && typeof p.url === 'string' && /^https?:/i.test(p.url)))
+    if (added.length) {
+      source.value = 'app'
+      justAdded.value = added
+    }
+    log('added from the app:', added.length)
+    return added.filter(a => !a.existing).length
+  }
+
   const dismiss = () => { justAdded.value = [] }
 
-  return { supported: bookmarksSupported(), enabled, justAdded, check, enable, disable, sortRecent, dismiss }
+  return { supported: bookmarksSupported(), enabled, justAdded, source, check, enable, disable, sortRecent, addFromApp, dismiss }
+}
+
+/**
+ * Lets Tabscape Browser (the iPhone and iPad app) hand over the pages saved with
+ * "Add to Tabscape": it calls window.tabscapeAddPages([{ url, title }]) once the page is up.
+ */
+export const listenForApp = () => {
+  const { addFromApp } = useAutoSort()
+  ;(window as unknown as { tabscapeAddPages: (pages: NewBookmark[]) => number }).tabscapeAddPages = addFromApp
 }
 
 /** Run the sorter for as long as the page is open: on open, and whenever it comes back into view. */
