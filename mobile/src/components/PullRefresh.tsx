@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet } from 'react-native'
-import Svg, { Circle } from 'react-native-svg'
+import Svg, { Path } from 'react-native-svg'
 
 /** How far to pull (points) before the page refreshes. */
 export const PULL_TO_REFRESH = 95
@@ -8,9 +8,26 @@ export const PULL_TO_REFRESH = 95
 const SIZE = 30
 const STROKE = 3
 const RADIUS = (SIZE - STROKE) / 2
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+const CENTRE = SIZE / 2
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle)
+/** A point on the ring, `turn` of the way round clockwise from 12 o'clock (0 to 1). */
+const pointAt = (turn: number) => {
+  const angle = turn * 2 * Math.PI - Math.PI / 2
+  return `${CENTRE + RADIUS * Math.cos(angle)} ${CENTRE + RADIUS * Math.sin(angle)}`
+}
+
+/**
+ * The ring drawn from 12 o'clock clockwise, `amount` of the way round, like a clock hand
+ * sweeping from 12 through 1, 2, 3… Drawn as an explicit arc, so it always starts at the top.
+ */
+const arc = (amount: number) => {
+  if (amount <= 0.001) return ''
+  if (amount >= 0.999) {
+    // A full circle: two half arcs, since one arc can't end where it starts.
+    return `M ${pointAt(0)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(0.5)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(0)}`
+  }
+  return `M ${pointAt(0)} A ${RADIUS} ${RADIUS} 0 ${amount > 0.5 ? 1 : 0} 1 ${pointAt(amount)}`
+}
 
 interface Props {
   /** How far the page is pulled down past its top (points). */
@@ -23,12 +40,20 @@ interface Props {
 }
 
 /**
- * Arc's pull-to-refresh: a grey ring that draws itself round as you pull down, following
- * your finger, complete when the pull is far enough; then it spins while the page reloads.
+ * Arc's pull-to-refresh: a ring that draws itself clockwise from 12 o'clock as you pull down,
+ * faint grey at first and brightening to white, complete (with one pulse) when the pull is
+ * far enough; then it spins while the page reloads.
  */
 export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
   const spin = useRef(new Animated.Value(0)).current
   const grow = useRef(new Animated.Value(1)).current
+  /** How far round the ring is drawn, 0 to 1, following the pull. */
+  const [amount, setAmount] = useState(0)
+
+  useEffect(() => {
+    const id = pull.addListener(({ value }) => setAmount(Math.min(1, Math.max(0, value / PULL_TO_REFRESH))))
+    return () => pull.removeListener(id)
+  }, [pull])
 
   // Reaching the full pull: one beat, out and back.
   useEffect(() => {
@@ -48,14 +73,12 @@ export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
     return () => loop.stop()
   }, [refreshing, spin])
 
-  // While refreshing the ring stays full and in place; otherwise it follows the pull.
-  const drawn = refreshing ? 0.75 : pull.interpolate({ inputRange: [0, PULL_TO_REFRESH], outputRange: [0, 1], extrapolate: 'clamp' })
-  const dashOffset = typeof drawn === 'number'
-    ? CIRCUMFERENCE * (1 - drawn)
-    : drawn.interpolate({ inputRange: [0, 1], outputRange: [CIRCUMFERENCE, 0] })
+  const drawn = refreshing ? 0.75 : amount
+  // Faint and greyish at first, white once it's pulled all the way.
+  const brightness = refreshing ? 1 : 0.18 + 0.82 * amount
 
-  // Two layers: the outer follows the pull (set from scrolling), the inner spins (run natively).
-  // One value can't drive both kinds, so they never share a view.
+  // Two layers: the outer follows the pull (set from scrolling), the inner spins and pulses
+  // (run natively). One value can't drive both kinds, so they never share a view.
   return (
     <Animated.View
       pointerEvents="none"
@@ -74,20 +97,13 @@ export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
         style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }, { scale: grow }] }}
       >
         <Svg width={SIZE} height={SIZE}>
-          <AnimatedCircle
-            cx={SIZE / 2}
-            cy={SIZE / 2}
-            r={RADIUS}
+          <Path
+            d={arc(drawn)}
             stroke="#ffffff"
-            // Faint and greyish at first, white once it's pulled all the way.
-            strokeOpacity={refreshing ? 1 : pull.interpolate({ inputRange: [0, PULL_TO_REFRESH], outputRange: [0.18, 1], extrapolate: 'clamp' })}
+            strokeOpacity={brightness}
             strokeWidth={STROKE}
             strokeLinecap="round"
             fill="none"
-            strokeDasharray={`${CIRCUMFERENCE} ${CIRCUMFERENCE}`}
-            strokeDashoffset={dashOffset}
-            // Starts drawing from the top, going clockwise, as in Arc.
-            transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
           />
         </Svg>
       </Animated.View>
