@@ -1,8 +1,7 @@
-import LibraryMaskedView from '@react-native-masked-view/masked-view'
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
-import type { ComponentType, ReactElement, RefObject } from 'react'
-import { Animated, Pressable, StyleSheet, View, type ViewProps } from 'react-native'
+import type { RefObject } from 'react'
+import { Animated, Pressable, StyleSheet, View } from 'react-native'
 import type { Tab } from '../useTabs'
 import { Glass } from './Glass'
 import type { ViewRef } from './Hero'
@@ -24,44 +23,28 @@ interface Props {
   onMenu: () => void
 }
 
-/**
- * masked-view 0.3 declares itself as an old-style class TypeScript no longer accepts as a
- * JSX component; this restates it with the props it takes.
- */
-const MaskedView = LibraryMaskedView as unknown as ComponentType<ViewProps & { maskElement: ReactElement }>
-
 /** The bar's height above the safe area, so the page can leave room for it. */
 export const BAR_HEIGHT = 78
-/** How far above the buttons the page starts to soften, like iOS 26's scroll edge. */
-const FADE = 46
+/** Space above the buttons, inside the bar's panel. */
+const TOP = 12
 
 /** How far the bar moves to be out of sight, including the safe area under it. */
-export const barTravel = (bottomInset: number) => BAR_HEIGHT + FADE + Math.max(bottomInset, 12)
+export const barTravel = (bottomInset: number) => BAR_HEIGHT + TOP + Math.max(bottomInset, 12)
 
 /**
- * Arc's bar, floating over the page in Liquid Glass: the tab pictures on the left, a wide +
- * in the middle, and ⌃ for everything you can do with the page. Behind it, the page blurs and
- * darkens towards the bottom edge, so the buttons read over anything.
+ * Arc's bar: a dark grey panel along the bottom with a fine light line on top, and on it the
+ * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
 export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => (
   <Animated.View
     style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12), transform: [{ translateY: hide }] }]}
     pointerEvents="box-none"
   >
-    {/* A blur that fades in from nothing at the top to full at the bottom, then a darkening on top. */}
-    <MaskedView
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-      maskElement={<LinearGradient colors={['transparent', '#000']} locations={[0, 0.55]} style={StyleSheet.absoluteFill} />}
-    >
-      <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFill} />
-    </MaskedView>
-    <LinearGradient
-      colors={['rgba(14,14,20,0)', 'rgba(14,14,20,0.72)', 'rgba(14,14,20,0.9)']}
-      locations={[0, 0.5, 1]}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
+    {/* The panel: frosted, then Arc's charcoal over it, lighter at the top. */}
+    <View style={styles.panel} pointerEvents="none">
+      <BlurView tint="systemChromeMaterialDark" intensity={90} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(58,58,62,0.92)', 'rgba(40,40,44,0.96)']} style={StyleSheet.absoluteFill} />
+    </View>
 
     <View style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0 }]} />
     <View style={styles.row}>
@@ -97,8 +80,14 @@ const TabStack = ({ tab, count, frontRef }: { tab: Tab; count: number; frontRef:
 )
 
 const styles = StyleSheet.create({
-  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: FADE, paddingHorizontal: 22 },
-  progress: { position: 'absolute', top: FADE - 2, left: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: TOP, paddingHorizontal: 22 },
+  panel: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    overflow: 'hidden',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)'
+  },
+  progress: { position: 'absolute', top: 0, left: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
   row: { height: BAR_HEIGHT - 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   side: { width: 76 },
   right: { alignItems: 'flex-end' },
