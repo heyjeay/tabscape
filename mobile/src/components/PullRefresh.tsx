@@ -10,6 +10,9 @@ const STROKE = 3
 const RADIUS = (SIZE - STROKE) / 2
 const CENTRE = SIZE / 2
 
+/** Where the ring starts drawing: 1 o'clock, a twelfth of the way round from the top. */
+const START = 1 / 12
+
 /** A point on the ring, `turn` of the way round clockwise from 12 o'clock (0 to 1). */
 const pointAt = (turn: number) => {
   const angle = turn * 2 * Math.PI - Math.PI / 2
@@ -17,16 +20,17 @@ const pointAt = (turn: number) => {
 }
 
 /**
- * The ring drawn from 12 o'clock clockwise, `amount` of the way round, like a clock hand
- * sweeping from 12 through 1, 2, 3… Drawn as an explicit arc, so it always starts at the top.
+ * The ring drawn clockwise from 1 o'clock, `amount` of the way round, like a clock hand
+ * sweeping from 1 through 2, 3… and back up to 12 and 1. Drawn as an explicit arc, so it
+ * always starts at the top right.
  */
 const arc = (amount: number) => {
   if (amount <= 0.001) return ''
   if (amount >= 0.999) {
     // A full circle: two half arcs, since one arc can't end where it starts.
-    return `M ${pointAt(0)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(0.5)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(0)}`
+    return `M ${pointAt(START)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(START + 0.5)} A ${RADIUS} ${RADIUS} 0 1 1 ${pointAt(START)}`
   }
-  return `M ${pointAt(0)} A ${RADIUS} ${RADIUS} 0 ${amount > 0.5 ? 1 : 0} 1 ${pointAt(amount)}`
+  return `M ${pointAt(START)} A ${RADIUS} ${RADIUS} 0 ${amount > 0.5 ? 1 : 0} 1 ${pointAt(START + amount)}`
 }
 
 interface Props {
@@ -40,7 +44,7 @@ interface Props {
 }
 
 /**
- * Arc's pull-to-refresh: a ring that draws itself clockwise from 12 o'clock as you pull down,
+ * Arc's pull-to-refresh: a ring that draws itself clockwise from 1 o'clock as you pull down,
  * faint grey at first and brightening to white, complete (with one pulse) when the pull is
  * far enough; then it spins while the page reloads.
  */
