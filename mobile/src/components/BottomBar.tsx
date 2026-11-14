@@ -1,10 +1,11 @@
 import { BlurView } from 'expo-blur'
+import { GlassView } from 'expo-glass-effect'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { RefObject } from 'react'
 import { Animated, Pressable, StyleSheet, View } from 'react-native'
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
-import { Glass } from './Glass'
+import { Glass, liquidGlass } from './Glass'
 import type { ViewRef } from './Hero'
 import { Icon } from './Icon'
 import { TabPicture } from './TabPicture'
@@ -50,14 +51,35 @@ export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInse
     style={[styles.bar, { paddingBottom: bottomPad(bottomInset), transform: [{ translateY: hide }] }]}
     pointerEvents="box-none"
   >
-    {/* The panel: frosted charcoal at the top, warming into the site's own colour towards the bottom, like Arc. */}
+    {/*
+      The panel: iOS 26 Liquid Glass tinted with the site's colour, with that colour deepening
+      towards the bottom, like Arc. Without Liquid Glass: frosted charcoal warming into the colour.
+    */}
     <View style={styles.panel} pointerEvents="none">
-      <BlurView tint="systemChromeMaterialDark" intensity={90} style={StyleSheet.absoluteFill} />
-      <LinearGradient
-        colors={[css(CHARCOAL, 0.92), css(mix(CHARCOAL, accent, 0.18), 0.95), css(mix(CHARCOAL, accent, 0.42), 0.97)]}
-        locations={[0, 0.45, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      {liquidGlass ? (
+        <>
+          <GlassView
+            style={StyleSheet.absoluteFill}
+            glassEffectStyle="regular"
+            colorScheme="dark"
+            tintColor={css(mix(CHARCOAL, accent, 0.3), 0.45)}
+          />
+          <LinearGradient
+            colors={[css(accent, 0), css(accent, 0.1), css(accent, 0.28)]}
+            locations={[0, 0.5, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      ) : (
+        <>
+          <BlurView tint="systemChromeMaterialDark" intensity={90} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={[css(CHARCOAL, 0.92), css(mix(CHARCOAL, accent, 0.18), 0.95), css(mix(CHARCOAL, accent, 0.42), 0.97)]}
+            locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      )}
     </View>
 
     {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
