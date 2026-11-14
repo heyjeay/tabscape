@@ -26,7 +26,10 @@ export interface TabWebViewHandle {
 
 interface Props {
   tab: Tab
-  /** Room at the bottom for the floating bar, so the end of a page can scroll above it. */
+  /**
+   * Extra room at the bottom for the floating bar, beyond the safe area iOS already keeps
+   * clear, so the end of a page can scroll above it.
+   */
   bottomInset: number
   onState: (state: PageState) => void
   onProgress: (progress: number) => void
@@ -103,8 +106,9 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       allowingReadAccessToURL={startPageSource.baseUrl}
       style={{ flex: 1, backgroundColor: 'transparent' }}
       contentInset={{ bottom: bottomInset }}
-      automaticallyAdjustContentInsets={false}
-      contentInsetAdjustmentBehavior="never"
+      // The page fills the screen, under the clock and the home indicator; iOS keeps its
+      // content clear of them and scrolls it underneath, as Safari does.
+      contentInsetAdjustmentBehavior="automatic"
       allowsBackForwardNavigationGestures
       allowsInlineMediaPlayback
       decelerationRate="normal"

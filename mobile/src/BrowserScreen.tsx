@@ -12,6 +12,7 @@ import { PageActions } from './components/PageActions'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
+import { TopEdge } from './components/TopEdge'
 import { TabWebView, type PageState, type TabWebViewHandle } from './components/TabWebView'
 import { colors, log } from './config'
 import {
@@ -215,12 +216,12 @@ export const BrowserScreen = () => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
-      <View ref={page} style={[styles.page, { paddingTop: insets.top }]} collapsable={false}>
+      <View ref={page} style={styles.page} collapsable={false}>
         <TabWebView
           key={current.id}
           ref={web}
           tab={current}
-          bottomInset={finding ? 0 : barRoom}
+          bottomInset={finding ? 0 : barRoom - insets.bottom}
           onState={onState}
           onProgress={setProgress}
           onStartPageLoaded={deliver}
@@ -229,6 +230,7 @@ export const BrowserScreen = () => {
           onScroll={onScroll}
         />
       </View>
+      <TopEdge height={insets.top + 18} />
 
       {notice && (
         <Animated.View
