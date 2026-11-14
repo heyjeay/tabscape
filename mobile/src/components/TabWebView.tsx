@@ -121,9 +121,6 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       onMessage={message}
       // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
       injectedJavaScript={accentScript}
-      // Pull down at the top to reload, with iOS's own spinner, in white for the dark app.
-      pullToRefreshEnabled
-      refreshControlLightMode
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         onScroll(contentOffset.y, contentSize.height, layoutMeasurement.height)

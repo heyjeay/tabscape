@@ -9,6 +9,7 @@ import { Glass } from './components/Glass'
 import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
+import { PULL_TO_REFRESH, PullRefresh } from './components/PullRefresh'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
@@ -20,6 +21,17 @@ import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
 import { useTabs } from './useTabs'
+
+/** Pull-to-refresh steps: past each distance (points), a tap, getting stronger. */
+const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
+  [14, Haptics.ImpactFeedbackStyle.Light],
+  [26, Haptics.ImpactFeedbackStyle.Light],
+  [38, Haptics.ImpactFeedbackStyle.Medium],
+  [50, Haptics.ImpactFeedbackStyle.Medium],
+  [62, Haptics.ImpactFeedbackStyle.Heavy],
+  [74, Haptics.ImpactFeedbackStyle.Heavy],
+  [85, Haptics.ImpactFeedbackStyle.Rigid]
+]
 
 /** How many times a start page that isn't ready yet is offered what's waiting for it. */
 const DELIVERY_TRIES = 10
@@ -69,23 +81,42 @@ export const BrowserScreen = () => {
     barHidden.current = !show
     Animated.spring(barHide, { toValue: show ? 0 : barTravel(insets.bottom), useNativeDriver: true, speed: 18, bounciness: 2 }).start()
   }
-  // Pulling down at the top refreshes (iOS's own spinner); these ticks let you feel the pull:
-  // light ones as it goes, a firmer one once it's far enough to refresh.
-  const pullStep = useRef(0)
+  // Pull down at the top to refresh, like Arc: a ring draws itself round as you pull, and you
+  // feel it in steps that get stronger the further you go; at the full pull it hits hard and
+  // the page reloads.
+  const pull = useRef(new Animated.Value(0)).current
+  const pullLevel = useRef(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const reloadSeen = useRef(false)
   const feelPull = (y: number) => {
-    const pull = -(y + insets.top)
-    if (pull <= 0) {
-      pullStep.current = 0
+    const distance = Math.max(0, -(y + insets.top))
+    pull.setValue(distance)
+    if (distance <= 2) {
+      pullLevel.current = 0
       return
     }
-    if (nav.loading) return
-    const step = pull > 110 ? 3 : pull > 70 ? 2 : pull > 35 ? 1 : 0
-    if (step > pullStep.current) {
-      if (step === 3) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-      else Haptics.selectionAsync()
+    if (refreshing) return
+    const level = distance >= PULL_TO_REFRESH ? PULL_LEVELS.length + 1 : PULL_LEVELS.filter(([at]) => distance >= at).length
+    if (level <= pullLevel.current) return
+    pullLevel.current = level
+    if (level > PULL_LEVELS.length) {
+      // Full pull: a hard triple hit, and reload.
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 70)
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 150)
+      reloadSeen.current = false
+      setRefreshing(true)
+      web.current?.reload()
+    } else {
+      Haptics.impactAsync(PULL_LEVELS[level - 1][1])
     }
-    pullStep.current = Math.max(pullStep.current, step)
   }
+  // The ring stops once the reload has finished (or after a while, if it never reports).
+  useEffect(() => {
+    if (!refreshing) return
+    const giveUp = setTimeout(() => setRefreshing(false), 10_000)
+    return () => clearTimeout(giveUp)
+  }, [refreshing])
 
   const onScroll = (y: number, contentHeight: number, viewHeight: number) => {
     feelPull(y)
@@ -125,6 +156,10 @@ export const BrowserScreen = () => {
 
   const onState = (state: PageState) => {
     setNav({ canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading })
+    if (refreshing) {
+      if (state.loading) reloadSeen.current = true
+      else if (reloadSeen.current) setRefreshing(false)
+    }
     updateTab(currentId, { url: state.url, title: state.url ? state.title : 'Start page' })
     // Once it's drawn; tied to this tab, in case another is showing by then.
     const id = currentId
@@ -252,6 +287,7 @@ export const BrowserScreen = () => {
         />
       </View>
       <TopEdge height={insets.top + 18} />
+      <PullRefresh pull={pull} refreshing={refreshing} top={insets.top + 6} />
 
       {notice && (
         <Animated.View
