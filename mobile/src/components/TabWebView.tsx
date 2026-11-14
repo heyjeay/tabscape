@@ -71,17 +71,34 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
 ) {
   const web = useRef<WebViewInstance>(null)
   const [source, setSource] = useState(() => (tab.url ? { uri: tab.url } : startPageSource))
+  /** The address showing now, as the page last reported it. */
+  const showing = useRef<string | null>(tab.url)
+  /** Start page loads that have failed in a row, so putting it back can't go round forever. */
+  const failures = useRef(0)
+  const handed = useRef(0)
+
+  /**
+   * The start page has no address of its own: it's handed over as a page, with the documents
+   * folder as its address. Reloading it would load that folder ("Cannot open file", -3001), so
+   * it's handed over again instead. The web view only reloads a source that differs from the
+   * last one, so each hand-over is marked as a new one.
+   */
+  const showStartPage = () => {
+    handed.current += 1
+    setSource({ ...startPageSource, html: `${startPageSource.html}<!-- ${handed.current} -->` })
+  }
 
   useImperativeHandle(ref, () => ({
-    load: url => setSource(url ? { uri: url } : { ...startPageSource }),
+    load: url => (url ? setSource({ uri: url }) : showStartPage()),
     goBack: () => web.current?.goBack(),
     goForward: () => web.current?.goForward(),
-    reload: () => web.current?.reload(),
+    reload: () => (isStartPageUrl(showing.current) ? showStartPage() : web.current?.reload()),
     stopLoading: () => web.current?.stopLoading(),
     inject: script => web.current?.injectJavaScript(script)
   }))
 
   const report = (nav: WebViewNavigation) => {
+    showing.current = nav.url
     onState({
       url: isStartPageUrl(nav.url) ? null : nav.url,
       title: nav.title ?? '',
@@ -115,8 +132,21 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       decelerationRate="normal"
       onNavigationStateChange={report}
       onLoadProgress={event => onProgress(event.nativeEvent.progress)}
+      onLoad={() => {
+        failures.current = 0
+      }}
       onLoadEnd={event => {
         if (isStartPageUrl(event.nativeEvent.url)) onStartPageLoaded()
+      }}
+      // Going back to a start page iOS no longer keeps in memory makes it load the folder;
+      // put the page back quietly (twice at most) instead of showing the error.
+      onError={event => {
+        const { url, code } = event.nativeEvent
+        log('load failed:', code, url)
+        if ((url?.startsWith('file:') || code === -3001) && failures.current < 2) {
+          failures.current += 1
+          showStartPage()
+        }
       }}
       onMessage={message}
       // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
