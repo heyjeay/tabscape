@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ComponentRef, type RefObject } from '
 import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
-import { BAR_HEIGHT, BottomBar, barTravel } from './components/BottomBar'
+import { BottomBar, barSpace, barTravel } from './components/BottomBar'
 import { FindBar, findScript } from './components/FindBar'
 import { Glass } from './components/Glass'
 import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
@@ -57,7 +57,7 @@ export const BrowserScreen = () => {
   const tabsAppear = useRef(new Animated.Value(0)).current
   const growing = useRef(false)
 
-  const barRoom = BAR_HEIGHT + Math.max(insets.bottom, 12)
+  const barRoom = barSpace(insets.bottom)
 
   // The bar slides away while you scroll down a page, and comes back when you scroll up,
   // reach the top, or reach the end (like Safari and Arc).
@@ -280,6 +280,7 @@ export const BrowserScreen = () => {
       ) : (
         <BottomBar
           tab={current}
+          behind={tabs[tabs.indexOf(current) - 1] ?? tabs[tabs.indexOf(current) + 1]}
           tabCount={tabs.length}
           progress={progress}
           loading={nav.loading}

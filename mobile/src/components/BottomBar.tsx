@@ -11,6 +11,8 @@ import { TabPicture } from './TabPicture'
 
 interface Props {
   tab: Tab
+  /** Another open tab, for the card behind (the one before this tab, or after it). */
+  behind?: Tab
   tabCount: number
   progress: number
   loading: boolean
@@ -24,23 +26,28 @@ interface Props {
   onMenu: () => void
 }
 
-/** The bar's height above the safe area, so the page can leave room for it. */
-export const BAR_HEIGHT = 78
-/** Space above the buttons, inside the bar's panel. */
-const TOP = 12
+/** Arc's sizes, measured from its bar (points): the row of buttons, and the space above it. */
+const ROW = 46
+const TOP = 10
 
-/** How far the bar moves to be out of sight, including the safe area under it. */
-export const barTravel = (bottomInset: number) => BAR_HEIGHT + TOP + Math.max(bottomInset, 12)
+/** Arc tucks the buttons down into the home indicator's area a little, rather than above all of it. */
+const bottomPad = (bottomInset: number) => Math.max(bottomInset - 12, 10)
+
+/** The bar's whole height, so the page can leave room for it. */
+export const barSpace = (bottomInset: number) => TOP + ROW + bottomPad(bottomInset)
+
+/** How far the bar moves to be out of sight. */
+export const barTravel = barSpace
 
 /**
  * Arc's bar: a dark grey panel along the bottom with a fine light line on top, and on it the
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
-export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => {
+export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => {
   const accent = tab.accent ?? DEFAULT_ACCENT
   return (
   <Animated.View
-    style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12), transform: [{ translateY: hide }] }]}
+    style={[styles.bar, { paddingBottom: bottomPad(bottomInset), transform: [{ translateY: hide }] }]}
     pointerEvents="box-none"
   >
     {/* The panel: frosted charcoal at the top, warming into the site's own colour towards the bottom, like Arc. */}
@@ -67,19 +74,19 @@ export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide,
     </View>
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
-        <TabStack tab={tab} count={tabCount} frontRef={stackRef} />
+        <TabStack tab={tab} behind={behind} frontRef={stackRef} />
       </Pressable>
 
       <Pressable onPress={onNewTab} accessibilityLabel="New tab">
         <Glass style={styles.plus} interactive>
-          <Icon sf="plus" fallback="add" size={26} weight="semibold" />
+          <Icon sf="plus" fallback="add" size={20} weight="semibold" />
         </Glass>
       </Pressable>
 
       <View style={[styles.side, styles.right]}>
         <Pressable onPress={onMenu} accessibilityLabel="Page actions" hitSlop={10}>
           <Glass style={styles.circle} interactive>
-            <Icon sf="chevron.up" fallback="chevron-up" size={22} weight="semibold" />
+            <Icon sf="chevron.up" fallback="chevron-up" size={15} weight="bold" />
           </Glass>
         </Pressable>
       </View>
@@ -92,12 +99,16 @@ const CHARCOAL: Rgb = [44, 44, 48]
 const WHITE: Rgb = [255, 255, 255]
 const SKY: Rgb = [64, 156, 255]
 
-/** The current tab's picture, tilted, with another card behind it when there are more, like Arc. */
-const TabStack = ({ tab, count, frontRef }: { tab: Tab; count: number; frontRef: RefObject<ViewRef | null> }) => (
+/** The current tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc. */
+const TabStack = ({ tab, behind, frontRef }: { tab: Tab; behind?: Tab; frontRef: RefObject<ViewRef | null> }) => (
   <View style={styles.stack}>
-    {count > 1 && <View style={[styles.card, styles.behind]} />}
+    {behind && (
+      <View style={[styles.card, styles.behind]}>
+        <TabPicture tab={behind} letterSize={13} style={StyleSheet.absoluteFill} />
+      </View>
+    )}
     <View ref={frontRef} collapsable={false} style={[styles.card, styles.front, styles.frontBox]}>
-      <TabPicture tab={tab} letterSize={18} style={StyleSheet.absoluteFill} />
+      <TabPicture tab={tab} letterSize={13} style={StyleSheet.absoluteFill} />
     </View>
   </View>
 )
@@ -114,14 +125,14 @@ const styles = StyleSheet.create({
     position: 'absolute', top: -1, left: 0, height: 2, borderRadius: 1,
     shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }
   },
-  row: { height: BAR_HEIGHT - 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  side: { width: 76 },
+  row: { height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  side: { width: 60 },
   right: { alignItems: 'flex-end' },
-  plus: { width: 124, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
-  circle: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
-  stack: { width: 64, height: 58, alignItems: 'center', justifyContent: 'center' },
-  card: { position: 'absolute', width: 40, height: 50, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  behind: { backgroundColor: '#2c2c35', transform: [{ translateX: -7 }, { translateY: 5 }, { rotate: '-14deg' }] },
-  front: { transform: [{ translateX: 6 }, { translateY: -2 }, { rotate: '10deg' }] },
+  plus: { width: 76, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  circle: { width: 35, height: 35, borderRadius: 17.5, alignItems: 'center', justifyContent: 'center' },
+  stack: { width: 46, height: 44, alignItems: 'center', justifyContent: 'center' },
+  card: { position: 'absolute', width: 27, height: 33, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
+  behind: { overflow: 'hidden', backgroundColor: '#2c2c35', transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
+  front: { transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }] },
   frontBox: { overflow: 'hidden' }
 })
