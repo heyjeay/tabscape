@@ -1,11 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { useRef, type ComponentRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { Alert, Animated, PanResponder, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import type { Tab } from '../useTabs'
 import { Glass } from './Glass'
-import { measure, type Rect } from './Hero'
+import { measure, type Rect, type ViewRef } from './Hero'
 import { Icon } from './Icon'
 import { Favicon, TabPicture } from './TabPicture'
 
@@ -16,12 +16,14 @@ const TITLE = 54
 interface Props {
   tabs: Tab[]
   currentId: string
-  /** A card hidden while its picture flies to or from it. */
-  hiddenId: string | null
+  /** Cards hidden while their pictures fly to or from them. */
+  hiddenIds: string[]
   /** 0 → 1 as the tab browser comes in (and back as it leaves). */
   appear: Animated.Value
   /** The middle card has been laid out: where it is, for the picture flying into it. */
   onCurrentPlaced: (rect: Rect) => void
+  /** Each card's page, so the screen can find where any of them is. */
+  registerCard: (id: string, ref: RefObject<ViewRef | null>) => void
   onSelect: (id: string, rect: Rect | null) => void
   onClose: (id: string) => void
   onCloseAll: () => void
@@ -35,7 +37,7 @@ interface Props {
  * them, tap one to open it, swipe it up to close it.
  */
 export const TabCarousel = (props: Props) => {
-  const { tabs, currentId, hiddenId, appear } = props
+  const { tabs, currentId, hiddenIds, appear } = props
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const cardWidth = Math.min(width * 0.62, 420)
@@ -78,8 +80,9 @@ export const TabCarousel = (props: Props) => {
             scrollX={scrollX}
             width={cardWidth}
             height={cardHeight}
-            hidden={tab.id === hiddenId}
+            hidden={hiddenIds.includes(tab.id)}
             onPlaced={tab.id === currentId ? props.onCurrentPlaced : undefined}
+            register={ref => props.registerCard(tab.id, ref)}
             onSelect={rect => props.onSelect(tab.id, rect)}
             onClose={() => props.onClose(tab.id)}
           />
@@ -109,7 +112,7 @@ export const TabCarousel = (props: Props) => {
  * One tab in the stack. How far it is from the middle (in cards) sets where it sits:
  * the ones before the middle slide in behind it, a little smaller, leaving their edges showing.
  */
-const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, onSelect, onClose }: {
+const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, register, onSelect, onClose }: {
   tab: Tab
   index: number
   scrollX: Animated.Value
@@ -117,11 +120,16 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, onS
   height: number
   hidden: boolean
   onPlaced?: (rect: Rect) => void
+  register: (ref: RefObject<ViewRef | null>) => void
   onSelect: (rect: Rect | null) => void
   onClose: () => void
 }) => {
-  const page = useRef<ComponentRef<typeof View>>(null)
+  const page = useRef<ViewRef>(null)
   const lift = useRef(new Animated.Value(0)).current
+  // Once: the ref object itself never changes.
+  useEffect(() => {
+    register(page)
+  }, [])
   const at = (cards: number) => (index + cards) * width
   const input = [at(-1), at(0), at(1), at(4)]
 

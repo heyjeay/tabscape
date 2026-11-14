@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
-import { Linking } from 'react-native'
+import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
 import { isStartPageUrl, startPageSource } from '../lib/startPage'
@@ -35,6 +35,8 @@ interface Props {
   onMessage: (data: { type: string; [key: string]: unknown }) => void
   /** A link meant for a new window (target="_blank"). */
   onNewWindow: (url: string) => void
+  /** Where the page is scrolled to, and how tall it and the window are. */
+  onScroll: (y: number, contentHeight: number, viewHeight: number) => void
 }
 
 /** The page methods used here. */
@@ -60,7 +62,7 @@ const WEB = /^(https?|file|about|data|blob):/i
  * what it loads only changes when asked (load), never because the address it reports changed.
  */
 export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebView(
-  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow },
+  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll },
   ref
 ) {
   const web = useRef<WebViewInstance>(null)
@@ -112,6 +114,10 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
         if (isStartPageUrl(event.nativeEvent.url)) onStartPageLoaded()
       }}
       onMessage={message}
+      onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+        onScroll(contentOffset.y, contentSize.height, layoutMeasurement.height)
+      }}
       onOpenWindow={event => onNewWindow(event.nativeEvent.targetUrl)}
       onShouldStartLoadWithRequest={request => {
         if (WEB.test(request.url)) return true

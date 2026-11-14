@@ -1,12 +1,12 @@
 import * as Haptics from 'expo-haptics'
-import { useEffect, useRef, useState, type ComponentRef } from 'react'
+import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
-import { BAR_HEIGHT, BottomBar } from './components/BottomBar'
+import { BAR_HEIGHT, BottomBar, barTravel } from './components/BottomBar'
 import { FindBar, findScript } from './components/FindBar'
 import { Glass } from './components/Glass'
-import { measure, useHero, type Rect } from './components/Hero'
+import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
 import { SearchOverlay } from './components/SearchOverlay'
@@ -34,11 +34,14 @@ export const BrowserScreen = () => {
   const page = useRef<ComponentRef<typeof View>>(null)
   const stack = useRef<ComponentRef<typeof View>>(null)
   const hero = useHero()
+  /** A second flight, for the old tab's card shrinking back into the tab button. */
+  const shrink = useHero()
+  const cards = useRef(new Map<string, RefObject<ViewRef | null>>()).current
 
   const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, loading: false })
   const [progress, setProgress] = useState(0)
   const [tabsOpen, setTabsOpen] = useState(false)
-  const [hiddenCard, setHiddenCard] = useState<string | null>(null)
+  const [hiddenCards, setHiddenCards] = useState<string[]>([])
   const [showActions, setShowActions] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -53,6 +56,29 @@ export const BrowserScreen = () => {
   const growing = useRef(false)
 
   const barRoom = BAR_HEIGHT + Math.max(insets.bottom, 12)
+
+  // The bar slides away while you scroll down a page, and comes back when you scroll up,
+  // reach the top, or reach the end (like Safari and Arc).
+  const barHide = useRef(new Animated.Value(0)).current
+  const barHidden = useRef(false)
+  const lastY = useRef(0)
+  const showBar = (show: boolean) => {
+    if (barHidden.current === !show) return
+    barHidden.current = !show
+    Animated.spring(barHide, { toValue: show ? 0 : barTravel(insets.bottom), useNativeDriver: true, speed: 18, bounciness: 2 }).start()
+  }
+  const onScroll = (y: number, contentHeight: number, viewHeight: number) => {
+    const moved = y - lastY.current
+    lastY.current = y
+    if (y <= 40 || y + viewHeight >= contentHeight - 40) return showBar(true)
+    if (moved > 6) showBar(false)
+    else if (moved < -6) showBar(true)
+  }
+  // A different tab starts with the bar showing.
+  useEffect(() => {
+    lastY.current = 0
+    showBar(true)
+  }, [currentId])  // showBar only reads refs
 
   // A short message over the bar, like "Added to Tabscape". It slides rather than fades:
   // Liquid Glass doesn't render at low opacity.
@@ -131,6 +157,7 @@ export const BrowserScreen = () => {
 
   /** + : a new tab on the start page, with search up over it. */
   const newTab = () => {
+    showBar(true)
     snapshot()
     openTab()
     search('')
@@ -140,9 +167,10 @@ export const BrowserScreen = () => {
 
   /** Opens the tab browser: this tab's picture grows out of the tab button into the middle card. */
   const openTabs = async () => {
+    showBar(true)
     await snapshot()
     tabsAppear.setValue(0)
-    setHiddenCard(currentId)
+    setHiddenCards([currentId])
     growing.current = true
     setTabsOpen(true)
   }
@@ -154,7 +182,7 @@ export const BrowserScreen = () => {
     const from = (await measure(stack)) ?? { x: 24, y: height - barRoom, width: 40, height: 50 }
     Animated.timing(tabsAppear, { toValue: 1, duration: 260, useNativeDriver: true }).start()
     await hero.fly(current, from, card, { radius: 30 })
-    setHiddenCard(null)
+    setHiddenCards([])
   }
 
   /** Closes the tab browser without a flight (for +, settings, close all). */
@@ -162,17 +190,26 @@ export const BrowserScreen = () => {
     Animated.timing(tabsAppear, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setTabsOpen(false))
   }
 
-  /** Picks a tab: its card grows to fill the screen while the tab browser fades away under it. */
+  /**
+   * Picks a tab: its card grows to fill the screen while the tab browser fades away under it,
+   * and, if it's a different tab, the old one's card shrinks back into the tab button, like Arc.
+   */
   const openFromCard = async (id: string, card: Rect | null) => {
     const tab = tabs.find(t => t.id === id)
+    const old = current
+    const [full, oldCard, button] = await Promise.all([
+      measure(page),
+      old.id !== id ? measure(cards.get(old.id) ?? { current: null }) : Promise.resolve(null),
+      measure(stack)
+    ])
     select(id)
-    const full = (await measure(page)) ?? { x: 0, y: 0, width, height }
     if (!tab || !card) return fadeOutTabs()
-    setHiddenCard(id)
-    hero.fly(tab, card, full, { radius: 48, fadeAtEnd: true })
+    setHiddenCards(oldCard ? [id, old.id] : [id])
+    hero.fly(tab, card, full ?? { x: 0, y: 0, width, height }, { radius: 48, fadeAtEnd: true })
+    if (oldCard && button) shrink.fly(old, oldCard, button, { radius: 9 })
     Animated.timing(tabsAppear, { toValue: 0, duration: 240, useNativeDriver: true }).start(() => {
       setTabsOpen(false)
-      setHiddenCard(null)
+      setHiddenCards([])
     })
   }
 
@@ -189,6 +226,7 @@ export const BrowserScreen = () => {
           onStartPageLoaded={deliver}
           onMessage={onMessage}
           onNewWindow={url => openTab(url)}
+          onScroll={onScroll}
         />
       </View>
 
@@ -223,10 +261,14 @@ export const BrowserScreen = () => {
           progress={progress}
           loading={nav.loading}
           bottomInset={insets.bottom}
+          hide={barHide}
           stackRef={stack}
           onTabs={openTabs}
           onNewTab={newTab}
-          onMenu={() => setShowActions(true)}
+          onMenu={() => {
+            showBar(true)
+            setShowActions(true)
+          }}
         />
       )}
 
@@ -259,9 +301,10 @@ export const BrowserScreen = () => {
         <TabCarousel
           tabs={tabs}
           currentId={currentId}
-          hiddenId={hiddenCard}
+          hiddenIds={hiddenCards}
           appear={tabsAppear}
           onCurrentPlaced={growIntoCard}
+          registerCard={(id, ref) => cards.set(id, ref)}
           onSelect={openFromCard}
           onClose={closeTab}
           onCloseAll={() => {
@@ -287,7 +330,8 @@ export const BrowserScreen = () => {
         onClose={() => setSearching(false)}
       />
 
-      {/* The flying tab picture, above everything else. */}
+      {/* The flying tab pictures, above everything else. */}
+      {shrink.element}
       {hero.element}
 
       <SettingsSheet visible={showSettings} onClose={() => setShowSettings(false)} onImportQueued={importQueued} />
