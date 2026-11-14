@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useState, type ForwardRefExoti
 import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
+import { accentScript } from '../lib/color'
 import { isStartPageUrl, startPageSource } from '../lib/startPage'
 import type { Tab } from '../useTabs'
 
@@ -118,6 +119,11 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
         if (isStartPageUrl(event.nativeEvent.url)) onStartPageLoaded()
       }}
       onMessage={message}
+      // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
+      injectedJavaScript={accentScript}
+      // Pull down at the top to reload, with iOS's own spinner, in white for the dark app.
+      pullToRefreshEnabled
+      refreshControlLightMode
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         onScroll(contentOffset.y, contentSize.height, layoutMeasurement.height)

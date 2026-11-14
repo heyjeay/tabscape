@@ -15,6 +15,7 @@ import { TabCarousel } from './components/TabCarousel'
 import { TopEdge } from './components/TopEdge'
 import { TabWebView, type PageState, type TabWebViewHandle } from './components/TabWebView'
 import { colors, log } from './config'
+import { parseColor, usableAccent } from './lib/color'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
@@ -68,7 +69,26 @@ export const BrowserScreen = () => {
     barHidden.current = !show
     Animated.spring(barHide, { toValue: show ? 0 : barTravel(insets.bottom), useNativeDriver: true, speed: 18, bounciness: 2 }).start()
   }
+  // Pulling down at the top refreshes (iOS's own spinner); these ticks let you feel the pull:
+  // light ones as it goes, a firmer one once it's far enough to refresh.
+  const pullStep = useRef(0)
+  const feelPull = (y: number) => {
+    const pull = -(y + insets.top)
+    if (pull <= 0) {
+      pullStep.current = 0
+      return
+    }
+    if (nav.loading) return
+    const step = pull > 110 ? 3 : pull > 70 ? 2 : pull > 35 ? 1 : 0
+    if (step > pullStep.current) {
+      if (step === 3) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+      else Haptics.selectionAsync()
+    }
+    pullStep.current = Math.max(pullStep.current, step)
+  }
+
   const onScroll = (y: number, contentHeight: number, viewHeight: number) => {
+    feelPull(y)
     const moved = y - lastY.current
     lastY.current = y
     if (y <= 40 || y + viewHeight >= contentHeight - 40) return showBar(true)
@@ -119,6 +139,7 @@ export const BrowserScreen = () => {
 
   const onMessage = async (data: { type: string; [key: string]: unknown }) => {
     if (data.type === 'find') setNotFound(!data.found)
+    if (data.type === 'accent') updateTab(currentId, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
     if (data.type === 'delivered') {
       const taken = Number(data.taken)
       if (taken < 0) {

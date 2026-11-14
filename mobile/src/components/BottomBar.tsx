@@ -2,6 +2,7 @@ import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { RefObject } from 'react'
 import { Animated, Pressable, StyleSheet, View } from 'react-native'
+import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass } from './Glass'
 import type { ViewRef } from './Hero'
@@ -35,18 +36,35 @@ export const barTravel = (bottomInset: number) => BAR_HEIGHT + TOP + Math.max(bo
  * Arc's bar: a dark grey panel along the bottom with a fine light line on top, and on it the
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
-export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => (
+export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => {
+  const accent = tab.accent ?? DEFAULT_ACCENT
+  return (
   <Animated.View
     style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12), transform: [{ translateY: hide }] }]}
     pointerEvents="box-none"
   >
-    {/* The panel: frosted, then Arc's charcoal over it, lighter at the top. */}
+    {/* The panel: frosted charcoal at the top, warming into the site's own colour towards the bottom, like Arc. */}
     <View style={styles.panel} pointerEvents="none">
       <BlurView tint="systemChromeMaterialDark" intensity={90} style={StyleSheet.absoluteFill} />
-      <LinearGradient colors={['rgba(58,58,62,0.92)', 'rgba(40,40,44,0.96)']} style={StyleSheet.absoluteFill} />
+      <LinearGradient
+        colors={[css(CHARCOAL, 0.92), css(mix(CHARCOAL, accent, 0.18), 0.95), css(mix(CHARCOAL, accent, 0.42), 0.97)]}
+        locations={[0, 0.45, 1]}
+        style={StyleSheet.absoluteFill}
+      />
     </View>
 
-    <View style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0 }]} />
+    {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
+    <View
+      pointerEvents="none"
+      style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0, shadowColor: css(accent) }]}
+    >
+      <LinearGradient
+        colors={[css(mix(accent, WHITE, 0.15)), css(mix(accent, SKY, 0.65))]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+      />
+    </View>
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
         <TabStack tab={tab} count={tabCount} frontRef={stackRef} />
@@ -67,7 +85,12 @@ export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, hide,
       </View>
     </View>
   </Animated.View>
-)
+  )
+}
+
+const CHARCOAL: Rgb = [44, 44, 48]
+const WHITE: Rgb = [255, 255, 255]
+const SKY: Rgb = [64, 156, 255]
 
 /** The current tab's picture, tilted, with another card behind it when there are more, like Arc. */
 const TabStack = ({ tab, count, frontRef }: { tab: Tab; count: number; frontRef: RefObject<ViewRef | null> }) => (
@@ -87,7 +110,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.14)'
   },
-  progress: { position: 'absolute', top: 0, left: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
+  progress: {
+    position: 'absolute', top: -1, left: 0, height: 2, borderRadius: 1,
+    shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }
+  },
   row: { height: BAR_HEIGHT - 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   side: { width: 76 },
   right: { alignItems: 'flex-end' },

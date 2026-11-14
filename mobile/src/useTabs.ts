@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { log } from './config'
+import type { Rgb } from './lib/color'
 import { keys, load, save } from './lib/storage'
 
 /** One open tab. A null url is the Tabscape start page. */
@@ -9,6 +10,8 @@ export interface Tab {
   title: string
   /** A small picture of the page, for the tab button and the carousel (a temporary file). */
   thumbnail?: string
+  /** The site's accent colour, which tints the bar like Arc's. */
+  accent?: Rgb
 }
 
 interface Saved {
