@@ -43,8 +43,9 @@ export const TabCarousel = (props: Props) => {
   const { tabs, currentId, hiddenIds, appear } = props
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
-  const cardWidth = Math.min(width * 0.62, 420)
-  const cardHeight = Math.min(height - insets.top - insets.bottom - 230, cardWidth * 2.1)
+  // Arc's proportions: cards a little over half the screen wide and about two thirds as tall.
+  const cardWidth = Math.min(width * 0.57, 400)
+  const cardHeight = Math.min(height * 0.65, height - insets.top - insets.bottom - 190)
   const side = (width - cardWidth) / 2
   // The cards sit centred in the space above the buttons.
   const area = height - insets.top - (Math.max(insets.bottom, 12) + BUTTONS)
@@ -162,7 +163,7 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, reg
   const slide = useRef(new Animated.Value(0)).current
   useEffect(() => {
     if (!closedAt || index < closedAt.index) return
-    slide.setValue(width + 18)
+    slide.setValue(width * 0.88)
     Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 4 }).start()
   }, [closedAt?.at])
   // Once: the ref object itself never changes.
@@ -172,9 +173,14 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, reg
   const at = (cards: number) => (index + cards) * width
   const input = [at(-1), at(0), at(1), at(4)]
 
-  // Before the middle: pulled right behind the middle card, a sliver showing per card.
-  const translateX = scrollX.interpolate({ inputRange: input, outputRange: [14, 0, width * 0.86, width * 3.6], extrapolate: 'clamp' })
-  const scale = scrollX.interpolate({ inputRange: input, outputRange: [1, 1, 0.94, 0.85], extrapolate: 'clamp' })
+  // As in Arc: the next tab overlaps the middle card's right edge a little; the one before it
+  // tucks in behind with about a third of it showing, barely smaller; further ones stack up there.
+  const translateX = scrollX.interpolate({
+    inputRange: input,
+    outputRange: [-width * 0.12, 0, width * 0.68, width * 3.5],
+    extrapolate: 'clamp'
+  })
+  const scale = scrollX.interpolate({ inputRange: input, outputRange: [1, 1, 0.97, 0.9], extrapolate: 'clamp' })
   const titleOpacity = scrollX.interpolate({ inputRange: [at(-0.6), at(0), at(0.6)], outputRange: [0, 1, 0], extrapolate: 'clamp' })
 
   const swipe = useRef(
@@ -241,5 +247,5 @@ const styles = StyleSheet.create({
   round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 30, marginBottom: 8, paddingHorizontal: 4 },
   title: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '500' },
-  page: { borderRadius: 30, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)' }
+  page: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)' }
 })

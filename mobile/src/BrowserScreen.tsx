@@ -240,7 +240,7 @@ export const BrowserScreen = () => {
     growing.current = false
     const from = (await measure(stack)) ?? { x: 24, y: height - barRoom, width: 40, height: 50 }
     Animated.timing(tabsAppear, { toValue: 1, duration: 260, useNativeDriver: true }).start()
-    await hero.fly(current, from, card, { radius: 30 })
+    await hero.fly(current, from, card, { radius: 22 })
     setHiddenCards([])
   }
 
