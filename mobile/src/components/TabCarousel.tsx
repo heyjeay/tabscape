@@ -1,6 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { useEffect, useRef, type RefObject } from 'react'
-import { Alert, Animated, PanResponder, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { useEffect, useRef, type ComponentRef, type RefObject } from 'react'
+import {
+  Alert, Animated, PanResponder, Pressable, StyleSheet, View, useWindowDimensions,
+  type NativeScrollEvent, type NativeSyntheticEvent
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import type { Tab } from '../useTabs'
@@ -46,8 +49,26 @@ export const TabCarousel = (props: Props) => {
   // The cards sit centred in the space above the buttons.
   const area = height - insets.top - (Math.max(insets.bottom, 12) + BUTTONS)
   const cardTop = Math.max(0, (area - (cardHeight + TITLE)) / 2)
-  const start = Math.max(0, tabs.findIndex(t => t.id === currentId))
+  // Where it opens: on the current tab. Fixed once it's open; scrolling and closing move it from there.
+  const start = useRef(Math.max(0, tabs.findIndex(t => t.id === currentId))).current
   const scrollX = useRef(new Animated.Value(start * cardWidth)).current
+  const scroller = useRef<ComponentRef<typeof Animated.ScrollView>>(null)
+  /** The card in the middle right now. */
+  const middle = useRef(start)
+
+  /**
+   * Closing a card keeps you where you were: close the middle one and the next slides in;
+   * close one before it and the cards after it shift back a place, so the view follows them.
+   */
+  const close = (id: string) => {
+    const index = tabs.findIndex(t => t.id === id)
+    props.onClose(id)
+    if (index >= 0 && index < middle.current) {
+      const stay = middle.current - 1
+      middle.current = stay
+      requestAnimationFrame(() => scroller.current?.scrollTo({ x: stay * cardWidth, animated: false }))
+    }
+  }
 
   const confirmCloseAll = () =>
     Alert.alert('Close all tabs?', undefined, [
@@ -62,6 +83,7 @@ export const TabCarousel = (props: Props) => {
       </Animated.View>
 
       <Animated.ScrollView
+        ref={scroller}
         horizontal
         showsHorizontalScrollIndicator={false}
         snapToInterval={cardWidth}
@@ -70,7 +92,12 @@ export const TabCarousel = (props: Props) => {
         style={{ position: 'absolute', top: insets.top, left: 0, right: 0, height: area, opacity: appear }}
         contentContainerStyle={{ paddingHorizontal: side, paddingTop: cardTop }}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+          useNativeDriver: true,
+          listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+            middle.current = Math.round(event.nativeEvent.contentOffset.x / cardWidth)
+          }
+        })}
       >
         {tabs.map((tab, index) => (
           <StackedCard
@@ -84,7 +111,7 @@ export const TabCarousel = (props: Props) => {
             onPlaced={tab.id === currentId ? props.onCurrentPlaced : undefined}
             register={ref => props.registerCard(tab.id, ref)}
             onSelect={rect => props.onSelect(tab.id, rect)}
-            onClose={() => props.onClose(tab.id)}
+            onClose={() => close(tab.id)}
           />
         ))}
       </Animated.ScrollView>
