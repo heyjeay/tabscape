@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
   Alert, Animated, PanResponder, Pressable, StyleSheet, View, useWindowDimensions,
   type NativeScrollEvent, type NativeSyntheticEvent
@@ -65,6 +65,14 @@ export const TabCarousel = (props: Props) => {
    */
   const close = (id: string) => {
     const index = tabs.findIndex(t => t.id === id)
+    if (index > 0 && index === tabs.length - 1 && index === middle.current) {
+      // The last card, in the middle: nothing slides in from the right, so glide back to the
+      // card before it first, then remove it (removing it first would snap the list).
+      middle.current = index - 1
+      scroller.current?.scrollTo({ x: (index - 1) * cardWidth, animated: true })
+      setTimeout(() => props.onClose(id), 260)
+      return
+    }
     props.onClose(id)
     if (index >= middle.current) setClosedAt({ index, at: Date.now() })
     if (index >= 0 && index < middle.current) {
@@ -163,49 +171,63 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, reg
   const slide = useRef(new Animated.Value(0)).current
   useEffect(() => {
     if (!closedAt || index < closedAt.index) return
-    slide.setValue(width * 0.88)
+    // The card right after the closed one was overlapping the middle (12% in); the rest were a whole card along.
+    slide.setValue(index === closedAt.index ? width * 0.88 : width)
     Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 4 }).start()
   }, [closedAt?.at])
   // Once: the ref object itself never changes.
   useEffect(() => {
     register(page)
   }, [])
-  const at = (cards: number) => (index + cards) * width
-  const input = [at(-1), at(0), at(1), at(4)]
-
   // As in Arc: the next tab overlaps the middle card's right edge a little; the one before it
   // tucks in behind with about a third of it showing, barely smaller; further ones stack up there.
-  const translateX = scrollX.interpolate({
-    inputRange: input,
-    outputRange: [-width * 0.12, 0, width * 0.68, width * 3.5],
-    extrapolate: 'clamp'
-  })
-  const scale = scrollX.interpolate({ inputRange: input, outputRange: [1, 1, 0.97, 0.9], extrapolate: 'clamp' })
-  const titleOpacity = scrollX.interpolate({ inputRange: [at(-0.6), at(0), at(0.6)], outputRange: [0, 1, 0], extrapolate: 'clamp' })
+  // Built once per position: rebuilding them on every render makes the native animations stutter.
+  const motion = useMemo(() => {
+    const at = (cards: number) => (index + cards) * width
+    const input = [at(-1), at(0), at(1), at(4)]
+    const translateX = scrollX.interpolate({
+      inputRange: input,
+      outputRange: [-width * 0.12, 0, width * 0.68, width * 3.5],
+      extrapolate: 'clamp'
+    })
+    return {
+      translateX: Animated.add(translateX, slide),
+      scale: scrollX.interpolate({ inputRange: input, outputRange: [1, 1, 0.97, 0.9], extrapolate: 'clamp' }),
+      titleOpacity: scrollX.interpolate({ inputRange: [at(-0.6), at(0), at(0.6)], outputRange: [0, 1, 0], extrapolate: 'clamp' })
+    }
+  }, [index, width, scrollX, slide])
+
+  // The swipe handler lives as long as the card; it reaches the latest onClose through this.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   const swipe = useRef(
     PanResponder.create({
-      // Only an upward swipe; sideways is for moving between tabs.
-      onMoveShouldSetPanResponder: (_, g) => g.dy < -12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      // Only an upward swipe; sideways is for moving between tabs. Once it's going, it keeps
+      // the touch, so the list can't take over halfway and leave the card hanging.
+      onMoveShouldSetPanResponderCapture: (_, g) => g.dy < -12 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => lift.setValue(Math.min(0, g.dy)),
       onPanResponderRelease: (_, g) => {
-        if (g.dy < -140) {
-          Animated.timing(lift, { toValue: -1000, duration: 200, useNativeDriver: true }).start(onClose)
+        if (g.dy < -140 || g.vy < -1.2) {
+          Animated.timing(lift, { toValue: -1000, duration: 200, useNativeDriver: true }).start(() => closeRef.current())
         } else {
           Animated.spring(lift, { toValue: 0, useNativeDriver: true }).start()
         }
-      }
+      },
+      // If the system takes the touch anyway, put the card back.
+      onPanResponderTerminate: () => Animated.spring(lift, { toValue: 0, useNativeDriver: true }).start()
     })
   ).current
 
   return (
     <Animated.View
       {...swipe.panHandlers}
-      style={{ width, transform: [{ translateX: Animated.add(translateX, slide) }, { translateY: lift }, { scale }] }}
+      style={{ width, transform: [{ translateX: motion.translateX }, { translateY: lift }, { scale: motion.scale }] }}
     >
       <View style={styles.cardTop}>
         <Favicon tab={tab} size={20} />
-        <Animated.Text style={[styles.title, { opacity: titleOpacity }]} numberOfLines={1}>
+        <Animated.Text style={[styles.title, { opacity: motion.titleOpacity }]} numberOfLines={1}>
           {tab.url ? tab.title || tab.url : 'Start page'}
         </Animated.Text>
       </View>
