@@ -82,33 +82,42 @@ export const BrowserScreen = () => {
     Animated.spring(barHide, { toValue: show ? 0 : barTravel(insets.bottom), useNativeDriver: true, speed: 18, bounciness: 2 }).start()
   }
   // Pull down at the top to refresh, like Arc: a ring draws itself round as you pull, and you
-  // feel it in steps that get stronger the further you go; at the full pull it hits hard and
-  // the page reloads.
+  // feel it in steps that get stronger the further you go. At the full pull it hits hard and
+  // pulses, and the page reloads once you let go (not while you're still holding it).
   const pull = useRef(new Animated.Value(0)).current
   const pullLevel = useRef(0)
   const [refreshing, setRefreshing] = useState(false)
   const [pullPulse, setPullPulse] = useState(0)
   const reloadSeen = useRef(false)
+  /** Pulled all the way: the page reloads when you let go. */
+  const armed = useRef(false)
+  const refresh = () => {
+    if (!armed.current) return
+    armed.current = false
+    reloadSeen.current = false
+    setRefreshing(true)
+    web.current?.reload()
+  }
   const feelPull = (y: number) => {
     const distance = Math.max(0, -(y + insets.top))
     pull.setValue(distance)
     if (distance <= 2) {
       pullLevel.current = 0
+      // Back at the top after a full pull, and the page never said you let go: reload now.
+      refresh()
       return
     }
-    if (refreshing) return
+    if (refreshing || armed.current) return
     const level = distance >= PULL_TO_REFRESH ? PULL_LEVELS.length + 1 : PULL_LEVELS.filter(([at]) => distance >= at).length
     if (level <= pullLevel.current) return
     pullLevel.current = level
     if (level > PULL_LEVELS.length) {
-      // Full pull: a hard triple hit, and reload.
+      // Full pull: a hard triple hit and one pulse; the reload waits for you to let go.
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 70)
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 150)
-      reloadSeen.current = false
+      armed.current = true
       setPullPulse(Date.now())
-      setRefreshing(true)
-      web.current?.reload()
     } else {
       Haptics.impactAsync(PULL_LEVELS[level - 1][1])
     }
@@ -176,6 +185,8 @@ export const BrowserScreen = () => {
 
   const onMessage = async (data: { type: string; [key: string]: unknown }) => {
     if (data.type === 'find') setNotFound(!data.found)
+    // Your finger came off the page while it was pulled down past its top.
+    if (data.type === 'released') refresh()
     if (data.type === 'accent') updateTab(currentId, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
     if (data.type === 'delivered') {
       const taken = Number(data.taken)

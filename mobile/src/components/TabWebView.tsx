@@ -58,6 +58,18 @@ interface WebViewInstance {
  */
 const WebView = LibraryWebView as unknown as ForwardRefExoticComponent<WebViewProps & RefAttributes<WebViewInstance>>
 
+/**
+ * Run in each page before it loads: say when a finger comes off the page while it's pulled
+ * down past its top, so a full pull refreshes on letting go. Only at the top of the page, so taps further down send nothing.
+ */
+const releaseScript = `(function () {
+  var done = function () {
+    if (window.scrollY <= 0) window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'released' }));
+  };
+  window.addEventListener('touchend', done, { capture: true, passive: true });
+  window.addEventListener('touchcancel', done, { capture: true, passive: true });
+})(); true;`
+
 /** Schemes the page itself handles; anything else (tel:, mailto:, app links) goes to iOS. */
 const WEB = /^(https?|file|about|data|blob):/i
 
@@ -156,6 +168,7 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       onMessage={message}
       // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
       injectedJavaScript={accentScript}
+      injectedJavaScriptBeforeContentLoaded={releaseScript}
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         onScroll(contentOffset.y, contentSize.height, layoutMeasurement.height)
