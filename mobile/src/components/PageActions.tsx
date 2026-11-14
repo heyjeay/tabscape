@@ -2,12 +2,13 @@ import * as Clipboard from 'expo-clipboard'
 import type { SFSymbol } from 'expo-symbols'
 import type { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
-import { Linking, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Animated, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import { hostOf } from '../lib/address'
 import { Glass } from './Glass'
 import { Icon } from './Icon'
+import { useSlideUp } from './useSlideUp'
 
 interface Props {
   visible: boolean
@@ -29,21 +30,25 @@ type Fallback = keyof typeof Ionicons.glyphMap
 
 /**
  * What ⌃ opens, laid out like Arc's: back, forward, the address, copy and reload in a capsule,
- * four things to do with the page, then settings.
+ * four things to do with the page, then settings. It springs up over the page, which stays
+ * in view above it; a tap on the page closes it.
  */
 export const PageActions = (props: Props) => {
   const { visible, url, onClose } = props
   const insets = useSafeAreaInsets()
   const [copied, setCopied] = useState(false)
+  const { mounted, offset } = useSlideUp(visible)
 
   useEffect(() => {
     if (visible) setCopied(false)
   }, [visible])
 
+  if (!mounted) return null
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <View style={StyleSheet.absoluteFill} pointerEvents={visible ? 'auto' : 'none'}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <Animated.View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10), transform: [{ translateY: offset }] }]}>
         <Glass style={styles.panel}>
           <Glass style={styles.capsule}>
             <RoundIcon sf="chevron.left" fallback="chevron-back" label="Back" disabled={!props.canGoBack} onPress={props.onBack} />
@@ -78,8 +83,8 @@ export const PageActions = (props: Props) => {
 
           <Row sf="gearshape" fallback="settings-outline" label="Settings" onPress={props.onSettings} />
         </Glass>
-      </View>
-    </Modal>
+      </Animated.View>
+    </View>
   )
 }
 
@@ -115,7 +120,7 @@ const Row = ({ sf, fallback, label, onPress }: { sf: SFSymbol; fallback: Fallbac
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
-  wrap: { paddingHorizontal: 8 },
+  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8 },
   panel: { borderRadius: 38, padding: 16, gap: 18 },
   capsule: { flexDirection: 'row', alignItems: 'center', height: 62, borderRadius: 31, paddingHorizontal: 8 },
   icon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },

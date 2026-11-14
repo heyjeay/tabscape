@@ -1,7 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient'
+import type { RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { Tab } from '../useTabs'
 import { Glass } from './Glass'
+import type { ViewRef } from './Hero'
 import { Icon } from './Icon'
 import { TabPicture } from './TabPicture'
 
@@ -11,6 +13,8 @@ interface Props {
   progress: number
   loading: boolean
   bottomInset: number
+  /** The front tab card, so the tab browser can grow out of it. */
+  stackRef: RefObject<ViewRef | null>
   onTabs: () => void
   onNewTab: () => void
   onMenu: () => void
@@ -23,7 +27,7 @@ export const BAR_HEIGHT = 78
  * Arc's bar, floating over the page in Liquid Glass: the tab pictures on the left,
  * a wide + in the middle, and ⌃ for everything you can do with the page.
  */
-export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, onTabs, onNewTab, onMenu }: Props) => (
+export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, stackRef, onTabs, onNewTab, onMenu }: Props) => (
   <View style={[styles.bar, { paddingBottom: Math.max(bottomInset, 12) }]} pointerEvents="box-none">
     {/* A soft dark fade behind the controls, so they read over any page. */}
     <LinearGradient
@@ -34,7 +38,7 @@ export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, onTab
     <View style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0 }]} />
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
-        <TabStack tab={tab} count={tabCount} />
+        <TabStack tab={tab} count={tabCount} frontRef={stackRef} />
       </Pressable>
 
       <Pressable onPress={onNewTab} accessibilityLabel="New tab">
@@ -55,10 +59,12 @@ export const BottomBar = ({ tab, tabCount, progress, loading, bottomInset, onTab
 )
 
 /** The current tab's picture, tilted, with another card behind it when there are more, like Arc. */
-const TabStack = ({ tab, count }: { tab: Tab; count: number }) => (
+const TabStack = ({ tab, count, frontRef }: { tab: Tab; count: number; frontRef: RefObject<ViewRef | null> }) => (
   <View style={styles.stack}>
     {count > 1 && <View style={[styles.card, styles.behind]} />}
-    <TabPicture tab={tab} letterSize={18} style={[styles.card, styles.front]} />
+    <View ref={frontRef} collapsable={false} style={[styles.card, styles.front, styles.frontBox]}>
+      <TabPicture tab={tab} letterSize={18} style={StyleSheet.absoluteFill} />
+    </View>
   </View>
 )
 
@@ -73,5 +79,6 @@ const styles = StyleSheet.create({
   stack: { width: 64, height: 58, alignItems: 'center', justifyContent: 'center' },
   card: { position: 'absolute', width: 40, height: 50, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   behind: { backgroundColor: '#2c2c35', transform: [{ translateX: -7 }, { translateY: 5 }, { rotate: '-14deg' }] },
-  front: { transform: [{ translateX: 6 }, { translateY: -2 }, { rotate: '10deg' }] }
+  front: { transform: [{ translateX: 6 }, { translateY: -2 }, { rotate: '10deg' }] },
+  frontBox: { overflow: 'hidden' }
 })

@@ -1,14 +1,15 @@
 import * as Haptics from 'expo-haptics'
 import { useEffect, useRef, useState, type ComponentRef } from 'react'
-import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native'
+import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
 import { BAR_HEIGHT, BottomBar } from './components/BottomBar'
 import { FindBar, findScript } from './components/FindBar'
 import { Glass } from './components/Glass'
+import { measure, useHero, type Rect } from './components/Hero'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
-import { SearchSheet } from './components/SearchSheet'
+import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
 import { TabWebView, type PageState, type TabWebViewHandle } from './components/TabWebView'
@@ -20,28 +21,36 @@ import { useTabs } from './useTabs'
 
 /** How many times a start page that isn't ready yet is offered what's waiting for it. */
 const DELIVERY_TRIES = 10
-/** Sheets slide away before the next one can come up. */
-const SHEET_GAP_MS = 380
 
-/** The browser: the current tab's page edge to edge, Arc's floating bar over it, and the sheets it opens. */
+/**
+ * The browser: the current tab's page edge to edge, Arc's floating bar over it, and the layers
+ * it opens over the page (tab browser, ⌃ sheet, search), which animate the way Arc's do.
+ */
 export const BrowserScreen = () => {
   const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
   const { tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll } = useTabs()
   const web = useRef<TabWebViewHandle>(null)
   const page = useRef<ComponentRef<typeof View>>(null)
+  const stack = useRef<ComponentRef<typeof View>>(null)
+  const hero = useHero()
 
   const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, loading: false })
   const [progress, setProgress] = useState(0)
-  const [showTabs, setShowTabs] = useState(false)
+  const [tabsOpen, setTabsOpen] = useState(false)
+  const [hiddenCard, setHiddenCard] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [searchFrom, setSearchFrom] = useState('')
   const [finding, setFinding] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const deliveryTries = useRef(0)
   const currentIdRef = useRef(currentId)
   currentIdRef.current = currentId
+  const tabsAppear = useRef(new Animated.Value(0)).current
+  const growing = useRef(false)
 
   const barRoom = BAR_HEIGHT + Math.max(insets.bottom, 12)
 
@@ -111,21 +120,60 @@ export const BrowserScreen = () => {
   /** A backup is waiting: take it to a start page (this tab if it is one, a new one if not). */
   const importQueued = () => {
     setShowSettings(false)
-    setShowTabs(false)
     if (current.url) openTab()
     else deliver()
   }
 
-  const newTab = () => {
-    snapshot()
-    openTab()
+  const search = (from: string) => {
+    setSearchFrom(from)
     setSearching(true)
   }
 
-  /** Close one sheet, then open another once it has gone. */
-  const then = (close: () => void, open: () => void) => {
-    close()
-    setTimeout(open, SHEET_GAP_MS)
+  /** + : a new tab on the start page, with search up over it. */
+  const newTab = () => {
+    snapshot()
+    openTab()
+    search('')
+  }
+
+  // ---- The tab browser and its transitions ----
+
+  /** Opens the tab browser: this tab's picture grows out of the tab button into the middle card. */
+  const openTabs = async () => {
+    await snapshot()
+    tabsAppear.setValue(0)
+    setHiddenCard(currentId)
+    growing.current = true
+    setTabsOpen(true)
+  }
+
+  /** The middle card is in place: fly the picture from the tab button to it. */
+  const growIntoCard = async (card: Rect) => {
+    if (!growing.current) return
+    growing.current = false
+    const from = (await measure(stack)) ?? { x: 24, y: height - barRoom, width: 40, height: 50 }
+    Animated.timing(tabsAppear, { toValue: 1, duration: 260, useNativeDriver: true }).start()
+    await hero.fly(current, from, card, { radius: 30 })
+    setHiddenCard(null)
+  }
+
+  /** Closes the tab browser without a flight (for +, settings, close all). */
+  const fadeOutTabs = () => {
+    Animated.timing(tabsAppear, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setTabsOpen(false))
+  }
+
+  /** Picks a tab: its card grows to fill the screen while the tab browser fades away under it. */
+  const openFromCard = async (id: string, card: Rect | null) => {
+    const tab = tabs.find(t => t.id === id)
+    select(id)
+    const full = (await measure(page)) ?? { x: 0, y: 0, width, height }
+    if (!tab || !card) return fadeOutTabs()
+    setHiddenCard(id)
+    hero.fly(tab, card, full, { radius: 48, fadeAtEnd: true })
+    Animated.timing(tabsAppear, { toValue: 0, duration: 240, useNativeDriver: true }).start(() => {
+      setTabsOpen(false)
+      setHiddenCard(null)
+    })
   }
 
   return (
@@ -175,21 +223,12 @@ export const BrowserScreen = () => {
           progress={progress}
           loading={nav.loading}
           bottomInset={insets.bottom}
-          onTabs={async () => {
-            await snapshot()
-            setShowTabs(true)
-          }}
+          stackRef={stack}
+          onTabs={openTabs}
           onNewTab={newTab}
           onMenu={() => setShowActions(true)}
         />
       )}
-
-      <SearchSheet
-        visible={searching}
-        initial={current.url ?? ''}
-        onGo={url => web.current?.load(url)}
-        onClose={() => setSearching(false)}
-      />
 
       <PageActions
         visible={showActions}
@@ -201,37 +240,57 @@ export const BrowserScreen = () => {
         onBack={() => web.current?.goBack()}
         onForward={() => web.current?.goForward()}
         onReloadOrStop={() => (nav.loading ? web.current?.stopLoading() : web.current?.reload())}
-        onEditAddress={() => then(() => setShowActions(false), () => setSearching(true))}
+        onEditAddress={() => {
+          setShowActions(false)
+          search(current.url ?? '')
+        }}
         onFind={() => {
           setShowActions(false)
           setFinding(true)
         }}
         onAddToTabscape={addToTabscape}
-        onSettings={() => then(() => setShowActions(false), () => setShowSettings(true))}
+        onSettings={() => {
+          setShowActions(false)
+          setShowSettings(true)
+        }}
       />
+
+      {tabsOpen && (
+        <TabCarousel
+          tabs={tabs}
+          currentId={currentId}
+          hiddenId={hiddenCard}
+          appear={tabsAppear}
+          onCurrentPlaced={growIntoCard}
+          onSelect={openFromCard}
+          onClose={closeTab}
+          onCloseAll={() => {
+            closeAll()
+            fadeOutTabs()
+          }}
+          onNewTab={() => {
+            openTab()
+            fadeOutTabs()
+            search('')
+          }}
+          onSettings={() => {
+            fadeOutTabs()
+            setShowSettings(true)
+          }}
+        />
+      )}
+
+      <SearchOverlay
+        visible={searching}
+        initial={searchFrom}
+        onGo={url => web.current?.load(url)}
+        onClose={() => setSearching(false)}
+      />
+
+      {/* The flying tab picture, above everything else. */}
+      {hero.element}
 
       <SettingsSheet visible={showSettings} onClose={() => setShowSettings(false)} onImportQueued={importQueued} />
-
-      <TabCarousel
-        visible={showTabs}
-        tabs={tabs}
-        currentId={currentId}
-        onSelect={id => {
-          select(id)
-          setShowTabs(false)
-        }}
-        onClose={closeTab}
-        onCloseAll={() => {
-          closeAll()
-          setShowTabs(false)
-        }}
-        onNewTab={() => {
-          openTab()
-          then(() => setShowTabs(false), () => setSearching(true))
-        }}
-        onSettings={() => then(() => setShowTabs(false), () => setShowSettings(true))}
-        onDismiss={() => setShowTabs(false)}
-      />
     </KeyboardAvoidingView>
   )
 }
