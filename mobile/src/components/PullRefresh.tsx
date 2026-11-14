@@ -15,6 +15,8 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 interface Props {
   /** How far the page is pulled down past its top (points). */
   pull: Animated.Value
+  /** Changes each time a pull reaches full, for one pulse. */
+  pulse: number
   /** Spins while the page reloads. */
   refreshing: boolean
   top: number
@@ -24,8 +26,19 @@ interface Props {
  * Arc's pull-to-refresh: a grey ring that draws itself round as you pull down, following
  * your finger, complete when the pull is far enough; then it spins while the page reloads.
  */
-export const PullRefresh = ({ pull, refreshing, top }: Props) => {
+export const PullRefresh = ({ pull, pulse, refreshing, top }: Props) => {
   const spin = useRef(new Animated.Value(0)).current
+  const grow = useRef(new Animated.Value(1)).current
+
+  // Reaching the full pull: one beat, out and back.
+  useEffect(() => {
+    if (!pulse) return
+    grow.setValue(1)
+    Animated.sequence([
+      Animated.timing(grow, { toValue: 1.4, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.spring(grow, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 10 })
+    ]).start()
+  }, [pulse, grow])
 
   useEffect(() => {
     if (!refreshing) return
@@ -50,20 +63,24 @@ export const PullRefresh = ({ pull, refreshing, top }: Props) => {
         styles.ring,
         {
           top,
-          opacity: refreshing ? 1 : pull.interpolate({ inputRange: [8, 40], outputRange: [0, 1], extrapolate: 'clamp' }),
+          opacity: refreshing ? 1 : pull.interpolate({ inputRange: [2, 12], outputRange: [0, 1], extrapolate: 'clamp' }),
           transform: [
             { translateY: refreshing ? 24 : pull.interpolate({ inputRange: [0, PULL_TO_REFRESH * 2], outputRange: [0, 60], extrapolate: 'clamp' }) }
           ]
         }
       ]}
     >
-      <Animated.View style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}>
+      <Animated.View
+        style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }, { scale: grow }] }}
+      >
         <Svg width={SIZE} height={SIZE}>
           <AnimatedCircle
             cx={SIZE / 2}
             cy={SIZE / 2}
             r={RADIUS}
-            stroke="rgba(255,255,255,0.55)"
+            stroke="#ffffff"
+            // Faint and greyish at first, white once it's pulled all the way.
+            strokeOpacity={refreshing ? 1 : pull.interpolate({ inputRange: [0, PULL_TO_REFRESH], outputRange: [0.18, 1], extrapolate: 'clamp' })}
             strokeWidth={STROKE}
             strokeLinecap="round"
             fill="none"

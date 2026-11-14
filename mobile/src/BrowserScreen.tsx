@@ -87,6 +87,7 @@ export const BrowserScreen = () => {
   const pull = useRef(new Animated.Value(0)).current
   const pullLevel = useRef(0)
   const [refreshing, setRefreshing] = useState(false)
+  const [pullPulse, setPullPulse] = useState(0)
   const reloadSeen = useRef(false)
   const feelPull = (y: number) => {
     const distance = Math.max(0, -(y + insets.top))
@@ -105,6 +106,7 @@ export const BrowserScreen = () => {
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 70)
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 150)
       reloadSeen.current = false
+      setPullPulse(Date.now())
       setRefreshing(true)
       web.current?.reload()
     } else {
@@ -287,7 +289,7 @@ export const BrowserScreen = () => {
         />
       </View>
       <TopEdge height={insets.top + 18} />
-      <PullRefresh pull={pull} refreshing={refreshing} top={insets.top + 6} />
+      <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
 
       {notice && (
         <Animated.View

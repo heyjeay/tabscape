@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { useEffect, useRef, type ComponentRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
   Alert, Animated, PanResponder, Pressable, StyleSheet, View, useWindowDimensions,
   type NativeScrollEvent, type NativeSyntheticEvent
@@ -14,7 +14,7 @@ import { Favicon, TabPicture } from './TabPicture'
 
 /** The row of buttons along the bottom, and the title above each card. */
 const BUTTONS = 84
-const TITLE = 54
+const TITLE = 38
 
 interface Props {
   tabs: Tab[]
@@ -55,6 +55,8 @@ export const TabCarousel = (props: Props) => {
   const scroller = useRef<ComponentRef<typeof Animated.ScrollView>>(null)
   /** The card in the middle right now. */
   const middle = useRef(start)
+  /** The last close at or after the middle, so the cards after it can slide back into the gap. */
+  const [closedAt, setClosedAt] = useState<{ index: number; at: number } | null>(null)
 
   /**
    * Closing a card keeps you where you were: close the middle one and the next slides in;
@@ -63,6 +65,7 @@ export const TabCarousel = (props: Props) => {
   const close = (id: string) => {
     const index = tabs.findIndex(t => t.id === id)
     props.onClose(id)
+    if (index >= middle.current) setClosedAt({ index, at: Date.now() })
     if (index >= 0 && index < middle.current) {
       const stay = middle.current - 1
       middle.current = stay
@@ -110,6 +113,7 @@ export const TabCarousel = (props: Props) => {
             hidden={hiddenIds.includes(tab.id)}
             onPlaced={tab.id === currentId ? props.onCurrentPlaced : undefined}
             register={ref => props.registerCard(tab.id, ref)}
+            closedAt={closedAt}
             onSelect={rect => props.onSelect(tab.id, rect)}
             onClose={() => close(tab.id)}
           />
@@ -139,7 +143,7 @@ export const TabCarousel = (props: Props) => {
  * One tab in the stack. How far it is from the middle (in cards) sets where it sits:
  * the ones before the middle slide in behind it, a little smaller, leaving their edges showing.
  */
-const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, register, onSelect, onClose }: {
+const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, register, closedAt, onSelect, onClose }: {
   tab: Tab
   index: number
   scrollX: Animated.Value
@@ -148,11 +152,19 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, reg
   hidden: boolean
   onPlaced?: (rect: Rect) => void
   register: (ref: RefObject<ViewRef | null>) => void
+  closedAt: { index: number; at: number } | null
   onSelect: (rect: Rect | null) => void
   onClose: () => void
 }) => {
   const page = useRef<ViewRef>(null)
   const lift = useRef(new Animated.Value(0)).current
+  /** Slides a card back from where it was, when one before it closed. */
+  const slide = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    if (!closedAt || index < closedAt.index) return
+    slide.setValue(width + 18)
+    Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 4 }).start()
+  }, [closedAt?.at])
   // Once: the ref object itself never changes.
   useEffect(() => {
     register(page)
@@ -183,10 +195,10 @@ const StackedCard = ({ tab, index, scrollX, width, height, hidden, onPlaced, reg
   return (
     <Animated.View
       {...swipe.panHandlers}
-      style={{ width, transform: [{ translateX }, { translateY: lift }, { scale }] }}
+      style={{ width, transform: [{ translateX: Animated.add(translateX, slide) }, { translateY: lift }, { scale }] }}
     >
       <View style={styles.cardTop}>
-        <Favicon tab={tab} size={30} />
+        <Favicon tab={tab} size={20} />
         <Animated.Text style={[styles.title, { opacity: titleOpacity }]} numberOfLines={1}>
           {tab.url ? tab.title || tab.url : 'Start page'}
         </Animated.Text>
@@ -227,7 +239,7 @@ const styles = StyleSheet.create({
   },
   plus: { width: 124, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
   round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, marginBottom: 10, paddingHorizontal: 2 },
-  title: { flex: 1, color: colors.text, fontSize: 18, fontWeight: '500' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 30, marginBottom: 8, paddingHorizontal: 4 },
+  title: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '500' },
   page: { borderRadius: 30, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)' }
 })
