@@ -1,8 +1,8 @@
 import { BlurView } from 'expo-blur'
 import { GlassView } from 'expo-glass-effect'
 import { LinearGradient } from 'expo-linear-gradient'
-import type { RefObject } from 'react'
-import { Animated, Pressable, StyleSheet, View } from 'react-native'
+import { useEffect, useRef, type RefObject } from 'react'
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native'
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass, liquidGlass } from './Glass'
@@ -83,17 +83,7 @@ export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInse
     </View>
 
     {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
-    <View
-      pointerEvents="none"
-      style={[styles.progress, { width: `${Math.round(progress * 100)}%`, opacity: loading ? 1 : 0, shadowColor: css(accent) }]}
-    >
-      <LinearGradient
-        colors={[css(mix(accent, WHITE, 0.15)), css(mix(accent, SKY, 0.65))]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={StyleSheet.absoluteFill}
-      />
-    </View>
+    <ProgressLine progress={progress} loading={loading} accent={accent} />
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
         <TabStack tab={tab} behind={behind} frontRef={stackRef} />
@@ -121,6 +111,60 @@ const CHARCOAL: Rgb = [44, 44, 48]
 const WHITE: Rgb = [255, 255, 255]
 const SKY: Rgb = [64, 156, 255]
 
+/**
+ * The loading line. It glides to each new amount rather than jumping, never goes backwards
+ * while a page loads, and when the page is done it runs to the end before fading away.
+ * It's stretched rather than resized, so it all runs natively.
+ */
+const ProgressLine = ({ progress, loading, accent }: { progress: number; loading: boolean; accent: Rgb }) => {
+  const fill = useRef(new Animated.Value(0)).current
+  const shown = useRef(new Animated.Value(0)).current
+  const going = useRef(false)
+  const furthest = useRef(0)
+
+  useEffect(() => {
+    if (loading) {
+      if (!going.current) {
+        // A new load: start from the left, showing.
+        going.current = true
+        furthest.current = 0
+        fill.stopAnimation()
+        shown.stopAnimation()
+        fill.setValue(0)
+        shown.setValue(1)
+      }
+      // A little way along straight away, so it's seen to start. A full amount while still
+      // loading is the last page's, left over; the end is run to once loading stops.
+      const to = Math.max(furthest.current, progress >= 1 ? 0 : progress, 0.08)
+      if (to === furthest.current) return
+      furthest.current = to
+      Animated.timing(fill, { toValue: to, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+    } else if (going.current) {
+      going.current = false
+      Animated.sequence([
+        Animated.timing(fill, { toValue: 1, duration: 250, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(shown, { toValue: 0, duration: 300, delay: 60, useNativeDriver: true })
+      ]).start(({ finished }) => {
+        if (finished) fill.setValue(0)
+      })
+    }
+  }, [loading, progress, fill, shown])
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.progress, { shadowColor: css(accent), opacity: shown, transform: [{ scaleX: fill }] }]}
+    >
+      <LinearGradient
+        colors={[css(mix(accent, WHITE, 0.15)), css(mix(accent, SKY, 0.65))]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+      />
+    </Animated.View>
+  )
+}
+
 /** The current tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc. */
 const TabStack = ({ tab, behind, frontRef }: { tab: Tab; behind?: Tab; frontRef: RefObject<ViewRef | null> }) => (
   <View style={styles.stack}>
@@ -144,7 +188,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.14)'
   },
   progress: {
-    position: 'absolute', top: -1, left: 0, height: 2, borderRadius: 1,
+    position: 'absolute', top: -1, left: 0, right: 0, height: 2, borderRadius: 1, transformOrigin: 'left',
     shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }
   },
   row: { height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
