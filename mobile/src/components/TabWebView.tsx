@@ -73,7 +73,7 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
   const [source, setSource] = useState(() => (tab.url ? { uri: tab.url } : startPageSource))
   /** The address showing now, as the page last reported it. */
   const showing = useRef<string | null>(tab.url)
-  /** Start page loads that have failed in a row, so putting it back can't go round forever. */
+  /** Start page loads that have failed since you last loaded something, so putting it back can't go round forever. */
   const failures = useRef(0)
   const handed = useRef(0)
 
@@ -89,10 +89,18 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
   }
 
   useImperativeHandle(ref, () => ({
-    load: url => (url ? setSource({ uri: url }) : showStartPage()),
+    load: url => {
+      failures.current = 0
+      if (url) setSource({ uri: url })
+      else showStartPage()
+    },
     goBack: () => web.current?.goBack(),
     goForward: () => web.current?.goForward(),
-    reload: () => (isStartPageUrl(showing.current) ? showStartPage() : web.current?.reload()),
+    reload: () => {
+      failures.current = 0
+      if (isStartPageUrl(showing.current)) showStartPage()
+      else web.current?.reload()
+    },
     stopLoading: () => web.current?.stopLoading(),
     inject: script => web.current?.injectJavaScript(script)
   }))
@@ -132,9 +140,6 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       decelerationRate="normal"
       onNavigationStateChange={report}
       onLoadProgress={event => onProgress(event.nativeEvent.progress)}
-      onLoad={() => {
-        failures.current = 0
-      }}
       onLoadEnd={event => {
         if (isStartPageUrl(event.nativeEvent.url)) onStartPageLoaded()
       }}
