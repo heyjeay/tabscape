@@ -1,0 +1,63 @@
+name: iPhone app update (over the air)
+
+# Sends the app's code and the start page inside it to phones over the air (EAS Update), no
+# TestFlight build needed. Published from here, not from a Windows checkout: an update only goes
+# to builds with the same runtime version, a fingerprint of the app's native side, and GitHub's
+# checkout (Unix line endings) fingerprints the same as the builds made by ios-testflight.yml.
+# Run it by hand, or with `npm run update:app` in mobile/ (which pushes nothing: push first).
+#   gh workflow run ios-update.yml -f message="What changed"
+#
+# Needs the EXPO_TOKEN repository secret, as ios-testflight.yml does.
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: What changed (shown in the EAS dashboard); the latest commit's title if empty
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # The same kind of machine the builds are made on, so the fingerprint is worked out alike.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build the start page into the app
+        run: |
+          npm ci
+          npm run build:mobile
+
+      - name: Install the app's packages
+        working-directory: mobile
+        run: npm ci
+
+      - name: Publish the update
+        working-directory: mobile
+        env:
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          if [ -z "$MESSAGE" ]; then MESSAGE="$(git log -1 --pretty=%s)"; fi
+          eas update --channel production --environment production --platform ios --non-interactive --message "$MESSAGE"
