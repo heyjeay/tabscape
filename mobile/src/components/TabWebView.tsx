@@ -48,6 +48,8 @@ interface Props {
   showing: boolean
   /** Site icons the app has saved (file:// addresses, by host), handed to start pages as they load, so their tiles have them at once. */
   icons: Record<string, string>
+  /** How the start page's tiles look (lib/settings tileScript), for start pages only. */
+  tiles: string
 }
 
 /** The page methods used here. */
@@ -151,7 +153,7 @@ const WEB = /^(https?|file|about|data|blob):/i
  * what it loads only changes when asked (load), never because the address it reports changed.
  */
 export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebView(
-  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll, textSizes, showing: onScreen, icons },
+  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll, textSizes, showing: onScreen, icons, tiles },
   ref
 ) {
   const web = useRef<WebViewInstance>(null)
@@ -250,8 +252,8 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
   const atStart = useMemo(() => {
     // Only the start page (a local page) is told where the saved icons are.
     const known = `if (location.protocol === 'file:') window.tabscapeKnownIcons = ${JSON.stringify(icons)};`
-    return `${releaseScript}${linkPressScript}${textSizesAtStart(textSizes)}${known} true;`
-  }, [textSizes, icons])
+    return `${releaseScript}${linkPressScript}${textSizesAtStart(textSizes)}${known}${tiles} true;`
+  }, [textSizes, icons, tiles])
 
   return (
     <WebView

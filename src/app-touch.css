@@ -30,7 +30,7 @@
 }
 .in-app .tl-links ol {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--tile-columns, 4), minmax(0, 1fr));
   gap: 20px 16px;
   margin: 0 !important;
   padding: 0 !important;
@@ -70,24 +70,141 @@
 }
 .in-app .tl-link .tl-icon {
   width: 100% !important;
-  max-width: 76px;
+  max-width: var(--tile-max, 76px);
   height: auto !important;
   aspect-ratio: 1 / 1;
-  border-radius: 24% !important;
+  border-radius: var(--tile-radius, 24%) !important;
   font-size: clamp(22px, 8.5vw, 34px) !important;
   box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   transition: box-shadow 0.2s ease, transform 0.18s ease;
 }
-/* A site's big icon fills its tile; a small tab icon sits in the middle of a light one, as Safari shows them. */
-.in-app .tl-link img.tl-icon {
-  object-fit: cover;
+/*
+ * A tile is a frame (.tl-icon: shape, size, shadow, the press glow) around a face (the icon or
+ * letter, which takes the look). A site's big icon fills its face; a small one sits in the middle
+ * of a light face, as Safari shows them; a site with no icon has its letter on its section's colours.
+ */
+.in-app .tl-tile {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+.in-app .tl-tile-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  /* Blending (Tinted) stays inside the tile. */
+  isolation: isolate;
   background: #fff;
 }
-.in-app .tl-link img.tl-icon-small {
+.in-app .tl-tile-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.in-app .tl-tile-small .tl-tile-face img {
   box-sizing: border-box;
   padding: 27%;
   object-fit: contain;
+}
+.in-app .tl-tile-small .tl-tile-face {
   background: rgba(255, 255, 255, 0.95);
+}
+.in-app .tl-tile-letter .tl-tile-face {
+  background: var(--tile-gradient);
+}
+
+/* ---- Looks (the app's Settings → Start Page Icons), as the iPhone's home screen has them ---- */
+
+/* Dark: each icon on a dark face, a little dimmed; letters in their section's colours. */
+.in-app[data-tile-look='dark'] .tl-tile-face {
+  background: #1c1c1f;
+  filter: brightness(0.82) contrast(1.06);
+}
+.in-app[data-tile-look='dark'] .tl-tile-letter .tl-tile-face {
+  filter: none;
+}
+.in-app[data-tile-look='dark'] .tl-link .tl-icon {
+  box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/*
+ * Clear: see-through, colourless tiles, like frosted glass. Drawn without backdrop-filter: a
+ * live blur behind every tile, over a moving background, would keep the phone's GPU busy.
+ */
+.in-app[data-tile-look='clear'] .tl-link .tl-icon {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(0, 0, 0, 0.5);
+}
+.in-app[data-tile-look='clear'] .tl-tile-face {
+  background: transparent;
+  filter: grayscale(1) brightness(1.08);
+  opacity: 0.82;
+}
+
+/*
+ * Tinted: every tile in one colour. The icon gives the light and dark (its luminosity), the
+ * colour gives the hue, on a face a little darker than the colour itself.
+ */
+.in-app[data-tile-look='tinted'] .tl-tile-face {
+  background: color-mix(in srgb, var(--tile-tint, var(--accent)) 72%, #000);
+}
+.in-app[data-tile-look='tinted'] .tl-tile-face img {
+  mix-blend-mode: luminosity;
+}
+
+/* Letters: white on their colours (and on clear tiles), in their section's colours on a dark face. */
+.in-app .tl-tile-char {
+  line-height: 1;
+}
+.in-app[data-tile-look='clear'] .tl-tile-letter .tl-tile-face {
+  background: transparent;
+}
+.in-app[data-tile-look='dark'] .tl-tile-char {
+  background: var(--tile-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---- Shapes ---- */
+.in-app[data-tile-shape='circle'] {
+  --tile-radius: 50%;
+}
+.in-app[data-tile-shape='square'] {
+  --tile-radius: 12%;
+}
+
+/* ---- Sizes: how many tiles fit across ---- */
+.in-app[data-tile-size='small'] {
+  --tile-columns: 5;
+  --tile-max: 62px;
+}
+.in-app[data-tile-size='small'] .tl-links ol {
+  gap: 16px 10px;
+}
+.in-app[data-tile-size='small'] .tl-link .tl-label {
+  font-size: 11px;
+}
+.in-app[data-tile-size='large'] {
+  --tile-columns: 3;
+  --tile-max: 100px;
+}
+.in-app[data-tile-size='large'] .tl-links ol {
+  gap: 24px 20px;
+}
+
+/* ---- Names under the tiles: hidden from sight when off, still read out by VoiceOver ---- */
+.in-app[data-tile-names='off'] .tl-link .tl-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.in-app[data-tile-names='off'] .tl-links ol {
+  row-gap: 16px;
 }
 .in-app .tl-link .tl-label {
   width: 100%;

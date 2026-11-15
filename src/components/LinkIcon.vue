@@ -82,24 +82,53 @@ const letter = computed(() => {
 </script>
 
 <template>
-  <img
-    v-if="src"
-    v-show="!loading"
-    ref="image"
-    :src="src"
-    alt=""
-    class="tl-icon shrink-0 rounded-[4px] object-cover"
-    :class="{ 'tl-icon-small': small, 'tl-icon-reveal': reveal }"
-    :style="{ width: `${size}px`, height: `${size}px` }"
-    @load="onLoad"
-    @error="onError"
-  >
+  <!--
+    In the iPhone app: a tile in two layers. The frame (.tl-icon) has the tile's shape, size and
+    shadow; the face inside has the icon or letter and takes the look picked in the app's Settings
+    (Start Page Icons: app-touch.css), so a look never fights the press glow or the icon's blur-in.
+  -->
   <span
-    v-if="!src || loading"
+    v-if="inApp"
     aria-hidden="true"
-    class="tl-icon grid shrink-0 select-none place-items-center rounded-[5px] font-bold leading-none text-white"
-    :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.58)}px`, backgroundImage: gradientCss(gradient) }"
-  >{{ letter }}</span>
+    class="tl-icon tl-tile shrink-0 select-none font-bold leading-none text-white"
+    :class="{ 'tl-tile-small': small && !!src && !loading, 'tl-tile-letter': !src || loading }"
+    :style="{ width: `${size}px`, height: `${size}px`, '--tile-gradient': gradientCss(gradient) }"
+  >
+    <span class="tl-tile-face">
+      <img
+        v-if="src"
+        v-show="!loading"
+        ref="image"
+        :src="src"
+        alt=""
+        :class="{ 'tl-icon-reveal': reveal }"
+        @load="onLoad"
+        @error="onError"
+      >
+      <span v-if="!src || loading" class="tl-tile-char">{{ letter }}</span>
+    </span>
+  </span>
+  <!-- Elsewhere (the extension, the website): the icon, or its letter while there's none or it's loading. -->
+  <template v-else>
+    <img
+      v-if="src"
+      v-show="!loading"
+      ref="image"
+      :src="src"
+      alt=""
+      class="tl-icon shrink-0 rounded-[4px] object-cover"
+      :class="{ 'tl-icon-small': small, 'tl-icon-reveal': reveal }"
+      :style="{ width: `${size}px`, height: `${size}px` }"
+      @load="onLoad"
+      @error="onError"
+    >
+    <span
+      v-if="!src || loading"
+      aria-hidden="true"
+      class="tl-icon grid shrink-0 select-none place-items-center rounded-[5px] font-bold leading-none text-white"
+      :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.58)}px`, backgroundImage: gradientCss(gradient) }"
+    >{{ letter }}</span>
+  </template>
 </template>
 
 <style>

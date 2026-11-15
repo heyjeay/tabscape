@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
-import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
   ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Linking, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions
 } from 'react-native'
@@ -33,7 +33,7 @@ import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
 import { hasNativeExtras, setBlocking, setVisiblePages } from '../modules/tabscape-native'
-import { loadSettings } from './lib/settings'
+import { DEFAULT_TILES, loadSettings, tileScript, type TileSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs, type Tab } from './useTabs'
 import { restartIntoUpdate, useAppUpdates } from './lib/updates'
@@ -596,11 +596,26 @@ export const BrowserScreen = () => {
       clearTimeout(timer)
       stop()
     }
-  },[webs])
+  }, [webs])
 
-  // Ad and tracker blocking, as last set (it's on unless switched off in Settings).
+  // How start pages' tiles look (Settings → Start Page Icons): handed to each as it loads, and to
+  // the open ones straight away when it changes.
+  const [tiles, setTiles] = useState<TileSettings>(DEFAULT_TILES)
+  const tilesAtStart = useMemo(() => tileScript(tiles), [tiles])
+  const changeTiles = (next: TileSettings) => {
+    setTiles(next)
+    const script = `${tileScript(next)} true;`
+    webs.forEach(page => page.inject(script))
+  }
+
+  // Ad and tracker blocking, as last set (it's on unless switched off in Settings); and the tiles' look.
   useEffect(() => {
-    loadSettings().then(settings => setBlocking(settings.blockTrackers))
+    loadSettings().then(settings => {
+      setBlocking(settings.blockTrackers)
+      changeTiles(settings.tiles)
+    })
+    // Once, at start: changeTiles only sets state and talks to the pages open then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const tidyRef = useRef(async () => {})
@@ -749,6 +764,7 @@ export const BrowserScreen = () => {
                 onScroll={(y, contentHeight, viewHeight) => tab.id === currentIdRef.current && onScroll(y, contentHeight, viewHeight)}
                 textSizes={sizesFor(!!tab.private)}
                 icons={icons}
+                tiles={tilesAtStart}
               />
             </View>
           ))}
@@ -940,6 +956,7 @@ export const BrowserScreen = () => {
         }}
         onExportTabs={exportTabs}
         onBlockingChanged={() => web.current?.reload()}
+        onTilesChanged={changeTiles}
         textSizes={savedTextSizes}
         onResetTextSize={host => {
           resetSize(host)

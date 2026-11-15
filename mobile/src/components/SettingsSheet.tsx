@@ -11,7 +11,7 @@ import { ENGINES, engineOf, type EngineId } from '../lib/engines'
 import { clearVisits, clearVisitsSince } from '../lib/history'
 import { queueImport } from '../lib/savedPages'
 import { clearRecentSearches } from '../lib/searches'
-import { ARCHIVE_CHOICES, loadSettings, saveSettings, type BrowserSettings } from '../lib/settings'
+import { ARCHIVE_CHOICES, loadSettings, saveSettings, TINTS, type BrowserSettings, type TileSettings } from '../lib/settings'
 import { Glass } from './Glass'
 import type { HistoryKind } from './HistorySheet'
 import { Icon } from './Icon'
@@ -32,6 +32,8 @@ interface Props {
   onResetTextSize: (host: string | null) => void
   /** Ad and tracker blocking was switched on or off: the page showing loads again to match. */
   onBlockingChanged: () => void
+  /** The start page's tiles changed (Start Page Icons): open start pages change with them. */
+  onTilesChanged: (tiles: TileSettings) => void
 }
 
 type Fallback = keyof typeof Ionicons.glyphMap
@@ -77,7 +79,7 @@ const archiveLabel = (hours: number) => {
 export const SettingsSheet = (props: Props) => {
   const { visible, onClose } = props
   const [settings, setSettings] = useState<BrowserSettings | null>(null)
-  const [page, setPage] = useState<'main' | 'sites'>('main')
+  const [page, setPage] = useState<'main' | 'sites' | 'tiles'>('main')
 
   useEffect(() => {
     if (visible) loadSettings().then(setSettings)
@@ -132,7 +134,15 @@ export const SettingsSheet = (props: Props) => {
       CLEAR_RANGES.length - 1
     )
 
+  const changeTiles = (next: Partial<TileSettings>) => {
+    if (!settings) return
+    const tiles = { ...settings.tiles, ...next }
+    change({ tiles })
+    props.onTilesChanged(tiles)
+  }
+
   const sites = Object.entries(props.textSizes).sort(([a], [b]) => a.localeCompare(b))
+  const tiles = settings?.tiles
   const engine = engineOf(settings?.searchEngine)
 
   return (
@@ -147,14 +157,14 @@ export const SettingsSheet = (props: Props) => {
       <LinearGradient colors={['#1d1b2e', '#241c30']} style={styles.sheet}>
         <View style={styles.header}>
           <View style={styles.headerSide}>
-            {page === 'sites' && (
+            {page !== 'main' && (
               <Pressable onPress={() => setPage('main')} hitSlop={10} style={styles.back} accessibilityLabel="Back to Settings">
                 <Icon sf="chevron.left" fallback="chevron-back" size={18} weight="semibold" />
                 <Text style={styles.backText}>Settings</Text>
               </Pressable>
             )}
           </View>
-          <Text style={styles.heading}>{page === 'sites' ? 'Site Settings' : 'Settings'}</Text>
+          <Text style={styles.heading}>{page === 'sites' ? 'Site Settings' : page === 'tiles' ? 'Start Page Icons' : 'Settings'}</Text>
           <View style={[styles.headerSide, styles.headerRight]}>
             <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Done">
               <Glass style={styles.done} interactive>
@@ -164,7 +174,82 @@ export const SettingsSheet = (props: Props) => {
           </View>
         </View>
 
-        {page === 'sites' ? (
+        {page === 'tiles' ? (
+          <ScrollView contentContainerStyle={styles.list}>
+            <Text style={styles.note}>How the site tiles on your start page look, like the icons on your iPhone&apos;s home screen.</Text>
+
+            <View style={styles.looks}>
+              {LOOKS.map(look => (
+                <Pressable
+                  key={look.id}
+                  style={styles.lookWrap}
+                  onPress={() => changeTiles({ look: look.id })}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: tiles?.look === look.id }}
+                  accessibilityLabel={`${look.label} look`}
+                >
+                  <SampleTile look={look.id} tint={tiles?.tint ?? 'accent'} shape={tiles?.shape ?? 'rounded'} />
+                  <Text style={[styles.lookLabel, tiles?.look === look.id && styles.lookLabelOn]}>{look.label}</Text>
+                  <View style={[styles.lookDot, tiles?.look === look.id && styles.lookDotOn]} />
+                </Pressable>
+              ))}
+            </View>
+
+            {tiles?.look === 'tinted' && (
+              <Glass style={styles.swatchCard}>
+                <Text style={styles.cardTitle}>Colour</Text>
+                <View style={styles.swatches}>
+                  {['accent', ...TINTS].map(tint => (
+                    <Pressable
+                      key={tint}
+                      onPress={() => changeTiles({ tint })}
+                      hitSlop={4}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: tiles.tint === tint }}
+                      accessibilityLabel={tint === 'accent' ? "The start page's colour" : `Colour ${tint}`}
+                      style={[styles.swatchRing, tiles.tint === tint && styles.swatchRingOn]}
+                    >
+                      {tint === 'accent' ? (
+                        <LinearGradient colors={['#8b6cff', '#ff5fa2', '#ffb347']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.swatch} />
+                      ) : (
+                        <View style={[styles.swatch, { backgroundColor: tint }]} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.rowNote}>The first takes your start page&apos;s own colours.</Text>
+              </Glass>
+            )}
+
+            <Glass style={styles.swatchCard}>
+              <Text style={styles.cardTitle}>Shape</Text>
+              <Segmented
+                options={[{ id: 'rounded', label: 'Rounded' }, { id: 'circle', label: 'Circle' }, { id: 'square', label: 'Square' }]}
+                value={tiles?.shape ?? 'rounded'}
+                onChange={shape => changeTiles({ shape })}
+              />
+              <Text style={[styles.cardTitle, styles.cardTitleNext]}>Size</Text>
+              <Segmented
+                options={[{ id: 'small', label: 'Small · 5' }, { id: 'medium', label: 'Medium · 4' }, { id: 'large', label: 'Large · 3' }]}
+                value={tiles?.size ?? 'medium'}
+                onChange={size => changeTiles({ size })}
+              />
+              <Text style={styles.rowNote}>How many tiles fit across.</Text>
+            </Glass>
+
+            <Group>
+              <Row
+                sf="textformat"
+                fallback="text-outline"
+                color="#5e5ce6"
+                title="Show Names"
+                note="The site's name under each tile."
+                toggle={tiles?.names ?? true}
+                onToggle={names => changeTiles({ names })}
+              />
+            </Group>
+          </ScrollView>
+        ) : page === 'sites' ? (
           <ScrollView contentContainerStyle={styles.list}>
             <Text style={styles.note}>
               Text sizes you&apos;ve picked for each site, with the A buttons in the ⌃ menu. Desktop Site is set for each tab there too.
@@ -206,6 +291,15 @@ export const SettingsSheet = (props: Props) => {
             </View>
 
             <Group>
+              <Row
+                sf="square.grid.2x2.fill"
+                fallback="grid"
+                gradient={['#ff7a18', '#ff3d77']}
+                title="Start Page Icons"
+                value={LOOKS.find(l => l.id === tiles?.look)?.label}
+                chevron
+                onPress={() => setPage('tiles')}
+              />
               <Row sf="globe" fallback="globe-outline" color="#000000" title="Site Settings" chevron onPress={() => setPage('sites')} />
             </Group>
 
@@ -279,6 +373,63 @@ export const SettingsSheet = (props: Props) => {
     </Modal>
   )
 }
+
+/** The four looks, as the iPhone's home screen has them. */
+const LOOKS: { id: TileSettings['look']; label: string }[] = [
+  { id: 'default', label: 'Default' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'clear', label: 'Clear' },
+  { id: 'tinted', label: 'Tinted' }
+]
+
+const RADIUS: Record<TileSettings['shape'], number> = { rounded: 0.24, circle: 0.5, square: 0.12 }
+const SAMPLE = 62
+
+/**
+ * A made-up tile in one look, to choose by: a star, as a site's icon would be drawn. The start
+ * page draws the real ones (app-touch.css) the same way: own colours, on dark, see-through, or
+ * all in one colour.
+ */
+const SampleTile = ({ look, tint, shape }: { look: TileSettings['look']; tint: string; shape: TileSettings['shape'] }) => {
+  const box = { width: SAMPLE, height: SAMPLE, borderRadius: SAMPLE * RADIUS[shape] }
+  const colour = tint === 'accent' ? '#ff5fa2' : tint
+  const star = (color: string) => <Icon sf="star.fill" fallback="star" size={28} color={color} />
+  if (look === 'default') {
+    return (
+      <LinearGradient colors={['#ffb347', '#ff5f6d']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[box, styles.sampleCenter, styles.sampleShadow]}>
+        {star('#fff')}
+      </LinearGradient>
+    )
+  }
+  if (look === 'dark') {
+    return <View style={[box, styles.sampleCenter, styles.sampleShadow, { backgroundColor: '#1c1c1f' }]}>{star('#ff8a5c')}</View>
+  }
+  if (look === 'clear') {
+    return <View style={[box, styles.sampleCenter, styles.sampleClear]}>{star('rgba(255,255,255,0.92)')}</View>
+  }
+  return <View style={[box, styles.sampleCenter, styles.sampleShadow, { backgroundColor: '#141418' }]}>{star(colour)}</View>
+}
+
+/** A row of choices, one picked, like iOS's segmented control. */
+const Segmented = <T extends string>({ options, value, onChange }: {
+  options: { id: T; label: string }[]
+  value: T
+  onChange: (id: T) => void
+}) => (
+  <View style={styles.segments}>
+    {options.map(option => (
+      <Pressable
+        key={option.id}
+        onPress={() => onChange(option.id)}
+        style={[styles.segment, value === option.id && styles.segmentOn]}
+        accessibilityRole="button"
+        accessibilityState={{ selected: value === option.id }}
+      >
+        <Text style={[styles.segmentText, value === option.id && styles.segmentTextOn]} numberOfLines={1}>{option.label}</Text>
+      </Pressable>
+    ))}
+  </View>
+)
 
 /** Rows that belong together, on one glass card with lines between them. */
 const Group = ({ children }: { children: ReactNode }) => {
@@ -372,5 +523,26 @@ const styles = StyleSheet.create({
   value: { color: colors.secondary, fontSize: 17, maxWidth: 140 },
   note: { color: colors.secondary, fontSize: 14, lineHeight: 19, paddingHorizontal: 6 },
   empty: { color: colors.secondary, fontSize: 15, textAlign: 'center', marginTop: 30 },
-  about: { color: colors.dim, fontSize: 13, textAlign: 'center' }
+  about: { color: colors.dim, fontSize: 13, textAlign: 'center' },
+  looks: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
+  lookWrap: { alignItems: 'center', gap: 8, paddingVertical: 4 },
+  lookLabel: { color: colors.secondary, fontSize: 14, fontWeight: '500' },
+  lookLabelOn: { color: colors.text, fontWeight: '700' },
+  lookDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)' },
+  lookDotOn: { borderWidth: 6, borderColor: '#0a84ff', backgroundColor: '#fff' },
+  sampleCenter: { alignItems: 'center', justifyContent: 'center' },
+  sampleShadow: { shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 5 } },
+  sampleClear: { backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.45)' },
+  swatchCard: { borderRadius: 26, padding: 16, gap: 10 },
+  cardTitle: { color: colors.text, fontSize: 17 },
+  cardTitleNext: { marginTop: 8 },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  swatchRing: { padding: 3, borderRadius: 20, borderWidth: 2, borderColor: 'transparent' },
+  swatchRingOn: { borderColor: '#fff' },
+  swatch: { width: 28, height: 28, borderRadius: 14 },
+  segments: { flexDirection: 'row', padding: 3, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)' },
+  segment: { flex: 1, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  segmentOn: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  segmentText: { color: colors.secondary, fontSize: 14, fontWeight: '500' },
+  segmentTextOn: { color: colors.text, fontWeight: '700' }
 })
