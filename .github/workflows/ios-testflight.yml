@@ -1,0 +1,74 @@
+name: iPhone app to TestFlight
+
+# Builds the Tabscape iPhone app (mobile/) on one of GitHub's Mac machines, free for a public
+# repo, then sends it to TestFlight. It's the same build EAS makes in its own cloud (the same
+# signing certificate and profile, kept on EAS), so it uses none of Expo's monthly build allowance.
+# Run it by hand: Actions → "iPhone app to TestFlight" → Run workflow, or
+#   gh workflow run ios-testflight.yml
+#
+# Needs one repository secret, EXPO_TOKEN: an Expo access token (expo.dev → Account settings →
+# Access tokens), so the build can fetch the signing files and the App Store Connect key from EAS.
+#
+# Changes to the app's code alone don't need this: `npm run update:app` in mobile/ sends them over
+# the air. This is for changes iOS has to be rebuilt for (app.json, native modules, packages).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # The newest Xcode on the machine (App Store uploads need a current iOS SDK).
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # The start page goes inside the app (mobile/src/startpage.generated.ts, which git ignores).
+      - name: Build the start page into the app
+        run: |
+          npm ci
+          npm run build:mobile
+
+      - name: Install the app's packages
+        working-directory: mobile
+        run: npm ci
+
+      - name: Build the app
+        working-directory: mobile
+        run: eas build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/Tabscape.ipa"
+
+      - name: Send it to TestFlight
+        working-directory: mobile
+        run: eas submit --platform ios --profile production --path "$RUNNER_TEMP/Tabscape.ipa" --non-interactive
+
+      # Kept a week, in case it's wanted (the build itself is also in App Store Connect).
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Tabscape-ipa
+          path: ${{ runner.temp }}/Tabscape.ipa
+          retention-days: 7
