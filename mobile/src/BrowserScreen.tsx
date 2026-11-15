@@ -373,12 +373,14 @@ export const BrowserScreen = () => {
     Animated.timing(coverFade, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setCover(null))
   }
 
-  /** Swiping along the bar: the page shrinks into a card and slides, and the next tab's slides in (see TabSwipe). */
+  /** Swiping along the bar: the page follows your finger, and tabs fly into and out of the tab button, like Arc (see TabSwipe). */
   const swipe = useTabSwipe({
     width,
+    height,
+    current,
+    measureDeck: () => measure(stack),
     prev: group[groupAt - 1],
     next: group[groupAt + 1],
-    currentId,
     onStart: () => {
       showBar(true)
       snapshot()
@@ -517,8 +519,8 @@ export const BrowserScreen = () => {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
       <View style={styles.page}>
-        {/* While swiping between tabs: the tabs either side, as cards beside this one. */}
-        {swipe.sides}
+        {/* Going back a tab: the page you left, sliding away under the one coming out of the tab button. */}
+        {swipe.leavingUnder}
         <Animated.View
           ref={page}
           collapsable={false}
@@ -615,6 +617,9 @@ export const BrowserScreen = () => {
           }}
         />
       )}
+
+      {/* Going on a tab: the page you left, flying down into the tab button over the bar. */}
+      {swipe.leavingOver}
 
       <PageActions
         visible={showActions}
