@@ -117,6 +117,12 @@ export const useTabSwipe = (options: Options) => {
   const one = useRef(new Animated.Value(1)).current
   /** The picture of the page you left, going. */
   const leaving = useRef(newValues()).current
+  /**
+   * How far the frame it flies into the tab button through has opened down over the bar: while
+   * it's big it's cut off at the bar's top (so it doesn't hide the bar), and only near the end,
+   * small and close to the button, is it seen over the bar to land.
+   */
+  const opening = useRef(new Animated.Value(0)).current
 
   /** Your finger is on the bar, or a switch is under way: the page has the corners of a card. */
   const [moving, setMoving] = useState(false)
@@ -214,6 +220,7 @@ export const useTabSwipe = (options: Options) => {
     if (flight.forward) {
       // The next page, from beside this one on the right, slides in to fill the screen…
       enterX.setValue(dx + width + GAP)
+      opening.setValue(0)
       onSwitch(flight.to)
       const slideIn = timing(enterX, 0, slide)
       // …while the page you left shrinks a little into a card behind it…
@@ -227,7 +234,8 @@ export const useTabSwipe = (options: Options) => {
         timing(leaving.y, spot.y, { ...fly, easing: Easing.bezier(0.5, 0, 0.3, 1) }),
         timing(leaving.scale, spot.scale, { ...fly, easing: Easing.out(Easing.cubic) }),
         timing(leaving.tilt, DECK_TILT, fly),
-        timing(leaving.squeeze, spot.squeeze, { duration: 140, delay: 100, easing: Easing.inOut(Easing.quad) })
+        timing(leaving.squeeze, spot.squeeze, { duration: 140, delay: 100, easing: Easing.inOut(Easing.quad) }),
+        timing(opening, latest.current.barHeight, { duration: 120, delay: 110, easing: Easing.out(Easing.quad) })
       ])
       // …where it fades into the card the button now shows (the same picture, in the same place).
       const settling = timing(leaving.shown, 0, { duration: 90 })
@@ -344,15 +352,25 @@ export const useTabSwipe = (options: Options) => {
     const lower = Animated.multiply(away, barHeight)
     const frame = { transform: [{ translateY: lower }] }
     const unframe = { transform: [{ translateY: Animated.multiply(lower, -1) }] }
-    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going, frame, unframe }
-  }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, width, height, barHeight])
+    const flyFrame = { transform: [{ translateY: opening }] }
+    const flyUnframe = { transform: [{ translateY: Animated.multiply(opening, -1) }] }
+    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going, frame, unframe, flyFrame, flyUnframe }
+  }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, opening, width, height, barHeight])
 
   let under = null
   let over = null
   if (flight?.forward) {
     const card = <FlyingCard tab={flight.from} motion={motion.going} />
-    if (onTop) over = card
-    else under = card
+    if (onTop) {
+      // Over everything, through a frame that only opens down over the bar near the end.
+      over = (
+        <Animated.View pointerEvents="none" style={[styles.frame, { bottom: barHeight }, motion.flyFrame]}>
+          <Animated.View style={[styles.screen, { height }, motion.flyUnframe]}>{card}</Animated.View>
+        </Animated.View>
+      )
+    } else {
+      under = card
+    }
   } else if (flight) {
     under = <FlyingCard tab={flight.from} motion={motion.going} />
   }
