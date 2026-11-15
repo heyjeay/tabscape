@@ -47,8 +47,13 @@ const folder = new Directory(Paths.document, 'icons')
  * an image by its bytes, and has more places to look: everything's found again once.
  */
 const KEY = 'tabscape.icons.3'
-/** A site with no icon to be found is asked again after this long. */
-const RETRY_AFTER = 7 * 24 * 3600_000
+/** A site that answered but had no icon to be found is asked again after this long. */
+const RETRY_AFTER = 24 * 3600_000
+/**
+ * "No icon" found before this was often only a site out of reach for a moment (and once was
+ * kept a week): forgotten, so those sites are asked again.
+ */
+const FORGET_NONE_BEFORE = Date.parse('2026-11-16T00:00:00Z')
 /** Icons fetched at once. */
 const AT_ONCE = 6
 
@@ -57,6 +62,9 @@ type Entry = { file: string; width?: number } | { none: number }
 let index: Record<string, Entry> = {}
 const ready = load<Record<string, Entry> | null>(KEY, null).then(found => {
   index = found && typeof found === 'object' ? found : {}
+  for (const [key, entry] of Object.entries(index)) {
+    if ('none' in entry && entry.none < FORGET_NONE_BEFORE) delete index[key]
+  }
   // First launch with this version: the old icons go, and each is found again (the better way) when it's next wanted.
   if (!found) {
     try {
@@ -277,16 +285,20 @@ export const parentSite = (key: string) => {
 /** A site's homepage address, from its key. */
 const homeOf = (key: string) => (key.includes('://') ? `${key}/` : `https://${key}/`)
 
+/** Where a site's icons might be, best first; and whether it answered at all (it may be out of reach). */
 const candidatesFor = async (key: string) => {
   const home = homeOf(key)
   let named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], vector: [], manifest: null }
+  let answered = false
   try {
-    named = await fetchAsSafari(home, AS_SAFARI.accept, async response =>
-      response.ok ? iconsNamedIn((await response.text()).slice(0, 300_000), response.url || home) : named)
+    named = await fetchAsSafari(home, AS_SAFARI.accept, async response => {
+      answered = true
+      return response.ok ? iconsNamedIn((await response.text()).slice(0, 300_000), response.url || home) : named
+    })
   } catch {
     // No homepage to read: try the usual places.
   }
-  return ranked(named, home)
+  return { candidates: await ranked(named, home), answered }
 }
 
 /**
@@ -414,6 +426,10 @@ const widthOf = (entry: Entry | undefined) =>
  * the first that's sharp. A small one is saved marked small (".s." in its name), so the start
  * page shows it small in the middle of its tile instead of stretching it blurry.
  */
+/** Sites that didn't answer, and when: left a few minutes before they're asked again (not saved). */
+const outOfReach = new Map<string, number>()
+const ASK_AGAIN_AFTER = 5 * 60_000
+
 const find = async (key: string): Promise<string | null> => {
   // A server on your own network (or with a port) is only asked itself: it has no main site, and DuckDuckGo can't see it.
   const own = key.includes('://')
@@ -422,14 +438,21 @@ const find = async (key: string): Promise<string | null> => {
   const got: Downloads = new Map()
   const usual = `${homeOf(key)}apple-touch-icon.png`
   got.set(usual, download(usual))
-  let best = await bestOf(await candidatesFor(key), TRIES, null, got)
+  const site = await candidatesFor(key)
+  let best = await bestOf(site.candidates, TRIES, null, got)
   // Nothing on the subdomain: the site it belongs to (its icon is usually the same brand's).
-  if (!best && parent) best = await bestOf(await candidatesFor(parent), TRIES)
+  if (!best && parent) best = await bestOf((await candidatesFor(parent)).candidates, TRIES)
   // Still nothing, or only a tiny one: DuckDuckGo's copy (the site's, or the one it belongs to).
   if (!own && (!best || best.width < 32)) best = await bestOf([iconService(key), ...(parent ? [iconService(parent)] : [])], 2, best)
   if (!best) {
-    index[key] = { none: Date.now() }
-    persist()
+    // Only a site that answered is known to have none; one out of reach (offline, a server at
+    // home while you're out) is asked again the next time its icon is wanted.
+    if (site.answered) {
+      index[key] = { none: Date.now() }
+      persist()
+    } else {
+      outOfReach.set(key, Date.now())
+    }
     return null
   }
   return keep(key, best)
@@ -452,6 +475,7 @@ export const iconFor = async (host: string): Promise<string | null> => {
   const key = iconKey(host)
   const known = uriOf(index[key])
   if (known !== undefined) return known
+  if (Date.now() - (outOfReach.get(key) ?? 0) < ASK_AGAIN_AFTER) return null
   let pending = inFlight.get(key)
   if (!pending) {
     pending = new Promise<string | null>(resolve => {
