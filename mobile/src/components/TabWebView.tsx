@@ -1,8 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
-import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
+import { type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
 import { accentScript, css } from '../lib/color'
+import { handOff } from '../lib/handOff'
 import { textSizesAtStart } from '../lib/sites'
 import { isStartPageUrl, startPageSource } from '../lib/startPage'
 import type { Tab } from '../useTabs'
@@ -320,8 +321,8 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
           return false
         }
         if (WEB.test(request.url)) return true
-        log('handing to iOS:', request.url)
-        Linking.openURL(request.url).catch(() => {})
+        // Another app's address: only as Safari would (lib/handOff), never just because the page asked.
+        handOff(request.url, { tapped: request.navigationType === 'click', inFrame: request.isTopFrame === false })
         return false
       }}
     />
