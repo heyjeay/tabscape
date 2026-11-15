@@ -14,6 +14,8 @@ export interface Tab {
   thumbnail?: string
   /** The site's accent colour, which tints the bar like Arc's. */
   accent?: Rgb
+  /** The page's own background, which fills the strip under the clock (as in Safari). */
+  background?: Rgb
   /** Keeps no history, cookies or anything else, and isn't brought back next launch. */
   private?: boolean
   /** Asks sites for their full desktop version. */

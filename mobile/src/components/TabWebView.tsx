@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, 
 import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
-import { accentScript } from '../lib/color'
+import { accentScript, css } from '../lib/color'
 import { textSizesAtStart } from '../lib/sites'
 import { isStartPageUrl, startPageSource } from '../lib/startPage'
 import type { Tab } from '../useTabs'
@@ -241,7 +241,10 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       allowsLinkPreview={!tab.url}
       originWhitelist={['*']}
       allowingReadAccessToURL={startPageSource.baseUrl}
-      style={{ flex: 1, backgroundColor: 'transparent' }}
+      // The page's own background fills the strip under the clock, which the page itself starts
+      // below; otherwise it shows the app's dark background, a dark band across the top of the
+      // page's picture (a thin line on the tab cards) and of the page as it shrinks into a card.
+      style={{ flex: 1, backgroundColor: tab.background && tab.url ? css(tab.background) : 'transparent' }}
       contentInset={{ bottom: bottomInset }}
       // The page fills the screen, under the clock and the home indicator; iOS keeps its
       // content clear of them and scrolls it underneath, as Safari does.

@@ -272,7 +272,14 @@ export const BrowserScreen = () => {
   }
 
   const onMessage = async (id: string, data: { type: string; [key: string]: unknown }) => {
-    if (data.type === 'accent') updateTab(id, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
+    if (data.type === 'accent') {
+      // The start page draws its own background (its wallpaper), so it keeps the app's.
+      const onStartPage = !tabs.find(t => t.id === id)?.url
+      updateTab(id, {
+        accent: usableAccent(parseColor(String(data.color ?? ''))),
+        background: onStartPage ? undefined : (parseColor(String(data.background ?? '')) ?? undefined)
+      })
+    }
     if (data.type === 'delivered') return delivered(id, data)
     // The rest is about what you're doing, on the page showing.
     if (id !== currentIdRef.current) return

@@ -43,17 +43,22 @@ export const usableAccent = (accent: Rgb | null): Rgb => {
 
 /**
  * JavaScript run in each page once it has loaded: report its accent colour, the one it gives
- * the browser (<meta name="theme-color">, preferring a dark-mode one), or else its background.
+ * the browser (<meta name="theme-color">, preferring a dark-mode one), or else its background;
+ * and its background itself, to fill the strip under the clock with, as Safari does.
  */
 export const accentScript = `(function () {
   try {
+    var filled = function (el) {
+      var c = el ? getComputedStyle(el).backgroundColor : '';
+      var bare = (c || '').replace(/ /g, '');
+      var seeThrough = !bare || bare === 'transparent' || (bare.indexOf('rgba(') === 0 && bare.slice(-3) === ',0)');
+      return seeThrough ? null : c;
+    };
+    // A page with no background of its own is white, as browsers draw it.
+    var background = filled(document.body) || filled(document.documentElement) || 'rgb(255, 255, 255)';
     var metas = Array.prototype.slice.call(document.querySelectorAll('meta[name="theme-color"]'));
     var dark = metas.filter(function (m) { return /dark/.test(m.getAttribute('media') || ''); })[0];
-    var color = (dark || metas[0] || {}).content;
-    if (!color) {
-      var body = document.body ? getComputedStyle(document.body).backgroundColor : '';
-      color = body && body !== 'rgba(0, 0, 0, 0)' ? body : getComputedStyle(document.documentElement).backgroundColor;
-    }
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'accent', color: color || null }));
+    var color = (dark || metas[0] || {}).content || background;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'accent', color: color || null, background: background }));
   } catch (e) {}
 })(); true;`
