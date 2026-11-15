@@ -16,6 +16,7 @@ import { PageActions } from './components/PageActions'
 import { PULL_TO_REFRESH, PullRefresh } from './components/PullRefresh'
 import { ReaderView } from './components/ReaderView'
 import { SearchOverlay } from './components/SearchOverlay'
+import { CustomiseIcons } from './components/CustomiseIcons'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
 import { TopEdge } from './components/TopEdge'
@@ -33,7 +34,7 @@ import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
 import { hasNativeExtras, setBlocking, setVisiblePages } from '../modules/tabscape-native'
-import { DEFAULT_TILES, loadSettings, tileScript, type TileSettings } from './lib/settings'
+import { changeSettings, DEFAULT_TILES, loadSettings, tileScript, type TileSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs, type Tab } from './useTabs'
 import { restartIntoUpdate, useAppUpdates } from './lib/updates'
@@ -127,6 +128,9 @@ export const BrowserScreen = () => {
   const [historyOn, setHistoryOn] = useState<HistoryKind>('history')
   /** Asked for from Settings: shown once Settings has gone (two sheets can't be up at once). */
   const historyAfterSettings = useRef<HistoryKind | null>(null)
+  /** Start Page Icons' Customise card, over the start page; or waiting for Settings to go first. */
+  const [customising, setCustomising] = useState(false)
+  const customiseAfterSettings = useRef(false)
   const [article, setArticle] = useState<Article | null>(null)
   /** The tab browser is showing private tabs. */
   const [browsingPrivate, setBrowsingPrivate] = useState(false)
@@ -347,6 +351,13 @@ export const BrowserScreen = () => {
     }
     if (data.type === 'delivered') return delivered(id, data)
     // A start page took (or couldn't take) a computer's pairing code.
+    // Held on an empty part of a start page, as on the iPhone's home screen: the Customise card.
+    if (data.type === 'customise') {
+      if (tabs.find(t => t.id === id)?.url || id !== currentIdRef.current) return
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+      setCustomising(true)
+      return
+    }
     if (data.type === 'paired') {
       pendingPair.current = null
       Haptics.notificationAsync(data.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error)
@@ -602,19 +613,32 @@ export const BrowserScreen = () => {
   // the open ones straight away when it changes.
   const [tiles, setTiles] = useState<TileSettings>(DEFAULT_TILES)
   const tilesAtStart = useMemo(() => tileScript(tiles), [tiles])
-  const changeTiles = (next: TileSettings) => {
+  const showTiles = (next: TileSettings) => {
     setTiles(next)
     const script = `${tileScript(next)} true;`
     webs.forEach(page => page.inject(script))
+  }
+  /** Picked in the Customise card: shown at once, and kept. */
+  const changeTiles = (next: TileSettings) => {
+    showTiles(next)
+    changeSettings({ tiles: next })
+  }
+  /** The Customise card, over a start page (a new one if a site is showing, so the tiles can be seen change). */
+  const customise = () => {
+    if (current.url) {
+      showBar(true)
+      openTab(null, { private: isPrivate })
+    }
+    setCustomising(true)
   }
 
   // Ad and tracker blocking, as last set (it's on unless switched off in Settings); and the tiles' look.
   useEffect(() => {
     loadSettings().then(settings => {
       setBlocking(settings.blockTrackers)
-      changeTiles(settings.tiles)
+      showTiles(settings.tiles)
     })
-    // Once, at start: changeTiles only sets state and talks to the pages open then.
+    // Once, at start: showTiles only sets state and talks to the pages open then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -780,6 +804,8 @@ export const BrowserScreen = () => {
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
 
+      <CustomiseIcons visible={customising} tiles={tiles} onChange={changeTiles} onClose={() => setCustomising(false)} bottom={barRoom} />
+
       {notice && (
         <Animated.View
           pointerEvents={notice.action ? 'box-none' : 'none'}
@@ -942,6 +968,10 @@ export const BrowserScreen = () => {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onClosed={() => {
+          if (customiseAfterSettings.current) {
+            customiseAfterSettings.current = false
+            customise()
+          }
           const kind = historyAfterSettings.current
           historyAfterSettings.current = null
           if (kind) {
@@ -956,7 +986,10 @@ export const BrowserScreen = () => {
         }}
         onExportTabs={exportTabs}
         onBlockingChanged={() => web.current?.reload()}
-        onTilesChanged={changeTiles}
+        onCustomiseIcons={() => {
+          customiseAfterSettings.current = true
+          setShowSettings(false)
+        }}
         textSizes={savedTextSizes}
         onResetTextSize={host => {
           resetSize(host)

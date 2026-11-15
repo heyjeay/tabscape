@@ -53,3 +53,39 @@ export const askAppForIcon = (host: string) => {
     waiting = []
   }, 50)
 }
+
+/**
+ * Holding a finger on an empty part of the start page asks the app for its Customise card (Start
+ * Page Icons), as holding the iPhone's home screen does. Not on a tile, a button or a field, and
+ * not while links are being edited (then holds are for moving them).
+ */
+if (inApp && typeof document !== 'undefined') {
+  const HOLD_MS = 550
+  let hold: ReturnType<typeof setTimeout> | undefined
+  let x = 0
+  let y = 0
+  const stop = () => {
+    clearTimeout(hold)
+    hold = undefined
+  }
+  document.addEventListener('touchstart', e => {
+    stop()
+    if (e.touches.length !== 1) return
+    const target = e.target instanceof Element ? e.target : null
+    if (target?.closest('a, button, input, textarea, select, label, [contenteditable], [role="dialog"], .tl-link')) return
+    // Editing links (the pencil's Done is showing instead of the pencil).
+    if (!document.querySelector('[aria-label="Edit links"]')) return
+    x = e.touches[0].clientX
+    y = e.touches[0].clientY
+    hold = setTimeout(() => {
+      hold = undefined
+      appWindow.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'customise' }))
+    }, HOLD_MS)
+  }, { passive: true })
+  document.addEventListener('touchmove', e => {
+    const t = e.touches[0]
+    if (hold && t && (Math.abs(t.clientX - x) > 10 || Math.abs(t.clientY - y) > 10)) stop()
+  }, { passive: true })
+  document.addEventListener('touchend', stop, { passive: true })
+  document.addEventListener('touchcancel', stop, { passive: true })
+}
