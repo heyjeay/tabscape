@@ -16,6 +16,9 @@ export const GITHUB_URL = 'https://github.com/heyjeay/tabscape'
 /** The launch video on YouTube (its id), shown on the website and the Chrome listing. */
 export const VIDEO_ID = 'fi1AhXUkaxw'
 
+/** Tabscape's sync relay (relay/ in this repo): passes a person's encrypted start page between their devices. */
+export const RELAY_URL = 'https://tabscape-relay.jeayese.workers.dev'
+
 /** Where people get help and suggest features. */
 export const DISCORD_URL = 'https://discord.gg/T5bF56tvyj'
 

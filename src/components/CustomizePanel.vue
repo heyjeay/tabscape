@@ -3,14 +3,16 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
   Bookmark, Check, Cloud, CloudOff, Download, Image as ImageIcon, LayoutTemplate, LifeBuoy, Link2,
-  Loader2, RotateCcw, SlidersHorizontal, Sparkles, Type, Upload, Wand2, X
+  Loader2, QrCode, RotateCcw, SlidersHorizontal, Smartphone, Sparkles, Type, Upload, Wand2, X
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { siDiscord, siGithub } from 'simple-icons'
 import BrandIcon from '@/components/BrandIcon.vue'
 import FontPicker from '@/components/FontPicker.vue'
 import WallpaperPicker from '@/components/WallpaperPicker.vue'
+import { renderSVG } from 'uqr'
 import { DISCORD_URL, GITHUB_URL } from '@/config'
+import { inApp } from '@/lib/inApp'
 import { useStartpage } from '@/composables/useStartpage'
 import { useAutoSort } from '@/composables/useAutoSort'
 import { useFavicons } from '@/composables/useFavicons'
@@ -30,7 +32,29 @@ const POSITIONS: { id: Position; name: string; icon: typeof Check }[] = [
   { id: 'bottom', name: 'Bottom', icon: AlignVerticalJustifyEnd }
 ]
 
-const { state, exportData, importData, resetLinks, resetSettings, setSyncEnabled, restorePreSync } = useStartpage()
+const {
+  state, exportData, importData, resetLinks, resetSettings, setSyncEnabled, restorePreSync,
+  connectPhone, disconnectPhone
+} = useStartpage()
+
+/**
+ * Sync with a phone (lib/relay): this computer shows a QR code, and the iPhone's camera opens
+ * it in the Tabscape app, which joins. The code holds the secret the copies are sealed with, so
+ * it's only drawn when asked for, and hidden again on closing the panel.
+ */
+const phoneCode = ref<string | null>(null)
+const phoneBusy = ref(false)
+const showPhoneCode = async () => {
+  phoneBusy.value = true
+  const link = await connectPhone()
+  phoneBusy.value = false
+  phoneCode.value = link ? renderSVG(link, { border: 2, whiteColor: '#ffffff', blackColor: '#0b0b12' }) : null
+}
+const stopPhoneSync = () => {
+  if (!confirm(inApp ? 'Stop syncing with your computer? Your links stay here.' : 'Stop syncing with your phone? Your links stay on both.')) return
+  disconnectPhone()
+  phoneCode.value = null
+}
 const settings = state.settings
 const router = useRouter()
 const autoSort = useAutoSort()
@@ -48,7 +72,7 @@ const CATEGORIES = computed(() => [
   { id: 'fonts' as const, name: 'Fonts', icon: Type },
   { id: 'links' as const, name: 'Links', icon: Link2 },
   ...(autoSort.supported ? [{ id: 'bookmarks' as const, name: 'Bookmarks', icon: Bookmark }] : []),
-  { id: 'sync' as const, name: state.sync.available ? 'Sync & backup' : 'Backup', icon: Cloud },
+  { id: 'sync' as const, name: 'Sync & backup', icon: Cloud },
   { id: 'help' as const, name: 'Help & about', icon: LifeBuoy }
 ])
 
@@ -60,7 +84,10 @@ const current = computed(() => CATEGORIES.value.find(c => c.id === category.valu
 const trigger = ref<HTMLButtonElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 
-const close = () => { open.value = false }
+const close = () => {
+  open.value = false
+  phoneCode.value = null
+}
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
 
 // Escape closes it while it's open; focus moves in on open and back to the button on close.
@@ -448,7 +475,61 @@ const version = __APP_VERSION__
                 </button>
               </div>
 
+              <!-- Sync with a phone, through Tabscape's relay. -->
               <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-1.5 text-white/80"><Smartphone :size="15" /> {{ inApp ? 'Sync with your computer' : 'Sync with your phone' }}</span>
+                  <button v-if="state.relay.paired" class="text-xs text-white/50 hover:text-red-300" @click="stopPhoneSync">Stop</button>
+                </div>
+                <p v-if="state.relay.paired" class="flex items-center gap-1.5 text-xs leading-snug text-white/45">
+                  <template v-if="state.relay.status === 'error'">
+                    <CloudOff :size="13" class="shrink-0 text-amber-300" /> <span class="text-amber-200/90">{{ state.relay.message }}</span>
+                  </template>
+                  <template v-else-if="state.relay.status === 'syncing'">
+                    <Loader2 :size="13" class="shrink-0 animate-spin" /> Syncing...
+                  </template>
+                  <template v-else>
+                    <Cloud :size="13" class="shrink-0 text-emerald-300" />
+                    {{ inApp ? 'Your links stay the same here and on your computer.' : 'Your links stay the same here and on your phone.' }}
+                  </template>
+                </p>
+                <template v-if="inApp">
+                  <p v-if="!state.relay.paired" class="text-xs leading-snug text-white/45">
+                    In Tabscape on your computer, open Customize, then Sync &amp; backup, then Connect your phone, and point your iPhone's camera at the code it shows.
+                  </p>
+                  <button
+                    v-if="state.relay.paired && state.sync.canRestore && !state.sync.available"
+                    class="text-left text-xs text-sky-300 underline-offset-2 hover:underline"
+                    @click="restorePreSync"
+                  >
+                    Sync replaced this phone's links. Put them back
+                  </button>
+                </template>
+                <template v-else>
+                  <p class="text-xs leading-snug text-white/45">
+                    Keeps your links, pages and settings the same in the Tabscape iPhone app, in any browser.
+                    They're encrypted on your devices before they leave, so nobody else can read them, us included.
+                  </p>
+                  <div v-if="phoneCode" class="space-y-2 pt-1">
+                    <!-- eslint-disable-next-line vue/no-v-html -- a QR code drawn here from the pairing link, not outside content -->
+                    <div class="w-44 overflow-hidden rounded-xl bg-white p-1" v-html="phoneCode" />
+                    <p class="text-xs leading-snug text-white/60">
+                      Point your iPhone's camera at this code and tap the link to open it in Tabscape. Anyone who scans it can see your links, so only show it to your own phone.
+                    </p>
+                    <button class="text-xs text-white/50 hover:text-white" @click="phoneCode = null">Hide the code</button>
+                  </div>
+                  <button
+                    v-else
+                    class="field flex items-center gap-1.5 hover:bg-white/20 disabled:opacity-50"
+                    :disabled="phoneBusy"
+                    @click="showPhoneCode"
+                  >
+                    <QrCode :size="14" /> {{ state.relay.paired ? 'Connect another phone' : 'Connect your phone' }}
+                  </button>
+                </template>
+              </div>
+
+              <div class="space-y-2 border-t border-white/10 pt-5">
                 <p class="text-white/80">Backup</p>
                 <p class="text-xs leading-snug text-white/45">
                   Export your links, pages, images and settings to keep a copy, or to move them to a browser that doesn't sync.

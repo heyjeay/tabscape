@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tabscape-relay",
+  // The personal account ("Jeayese@gmail.com's Account"), not Streamstuff.
+  "account_id": "9c9b0a04f7280c3c7270d164d6344c3e",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "GROUPS", "class_name": "Group" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Group"] }]
+}

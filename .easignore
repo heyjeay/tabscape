@@ -40,3 +40,6 @@ mobile/android
 
 # Local Claude Code settings: nothing to do with the app
 .claude/
+
+# The sync relay (a Cloudflare Worker): nothing to do with the app's build
+relay/

@@ -13,3 +13,7 @@ brag-output-*/
 
 # The Expo app's copy of the start page, made by npm run build:mobile
 mobile/src/startpage.generated.ts
+
+# The sync relay's local state and generated types (npm run types in relay/ makes them)
+relay/.wrangler/
+relay/worker-configuration.d.ts

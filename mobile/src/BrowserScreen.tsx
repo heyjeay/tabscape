@@ -315,8 +315,19 @@ export const BrowserScreen = () => {
   const pictureTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(pictureTimer.current), [])
 
-  /** A start page is up: offer it anything waiting (saved pages, a backup to import). */
+  /**
+   * A computer's pairing code (from a tabscape://pair link the camera opened), waiting for a start
+   * page to take it: the start page does the syncing (lib/relay in the start page's code).
+   */
+  const pendingPair = useRef<string | null>(null)
+  const handOverPairing = (id: string) => {
+    const secret = pendingPair.current
+    if (secret) webs.get(id)?.inject(`window.tabscapePair && window.tabscapePair(${JSON.stringify(secret)}); true;`)
+  }
+
+  /** A start page is up: offer it anything waiting (saved pages, a backup to import, a pairing). */
   const deliver = async (id: string) => {
+    handOverPairing(id)
     const [pages, backup] = await Promise.all([loadSavedPages(), loadPendingImport()])
     if (pages.length || backup) webs.get(id)?.inject(deliveryScript(pages, backup))
   }
@@ -331,6 +342,13 @@ export const BrowserScreen = () => {
       })
     }
     if (data.type === 'delivered') return delivered(id, data)
+    // A start page took (or couldn't take) a computer's pairing code.
+    if (data.type === 'paired') {
+      pendingPair.current = null
+      Haptics.notificationAsync(data.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error)
+      setNotice(data.ok ? { text: 'Synced with your computer' } : { text: "Couldn't connect. Scan the code again", info: true })
+      return
+    }
     // A start page asks for site icons it hasn't got: each is handed over as it's found (once, ever).
     if (data.type === 'icons' && Array.isArray(data.hosts)) {
       for (const host of data.hosts.filter((h): h is string => typeof h === 'string').slice(0, 300)) {
@@ -497,6 +515,18 @@ export const BrowserScreen = () => {
   // works too) before then, and for shortcuts.
   const openLinkRef = useRef((_link: string | null | undefined) => {})
   openLinkRef.current = link => {
+    // A computer's pairing code: a start page takes it (this one if it is one, or a new one).
+    const secret = /^tabscape:\/\/pair\?k=([A-Za-z0-9_-]{40,64})$/.exec(link ?? '')?.[1]
+    if (secret) {
+      log('pairing with a computer')
+      pendingPair.current = secret
+      if (tabsOpen) fadeOutTabs()
+      setSearching(false)
+      setShowActions(false)
+      if (!current.url && !current.private && webs.get(currentId)) handOverPairing(currentId)
+      else openTab(null)
+      return
+    }
     const url = linkToOpen(link)
     if (!url) return
     log('opening a link handed over:', url)

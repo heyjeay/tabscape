@@ -1,0 +1,15 @@
+{
+  "name": "tabscape-relay",
+  "private": true,
+  "description": "Tabscape's sync relay (Cloudflare Worker): passes an encrypted start page between a person's devices",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "wrangler": "^4.162.0"
+  }
+}

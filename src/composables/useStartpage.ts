@@ -1,6 +1,10 @@
 import { reactive, watch } from 'vue'
 import { log } from '@/config'
 import { asList, onRemoteChange, pushSnapshot, readSnapshot, syncAvailable, SyncTooBig, type Snapshot } from '@/lib/sync'
+import {
+  isPaired, isPairingKey, joinPairing, leavePairing, pairingLink, pushRemote, readRemote, startPairing
+} from '@/lib/relay'
+import { inApp } from '@/lib/inApp'
 import { hostOf, nameFromAddress, pickTarget, sameAddress, type NewBookmark } from '@/lib/autosort'
 import {
   DEFAULT_SETTINGS, defaultPages, defaultSections, uid,
@@ -172,6 +176,12 @@ const state = reactive({
     message: '',
     /** Sync replaced this browser's own links; they can be put back. */
     canRestore: !!getRaw(PRESYNC_KEY)
+  },
+  /** Sync with a phone (or computer) through Tabscape's relay (lib/relay): works in every browser and the app. */
+  relay: {
+    paired: isPaired(),
+    status: 'idle' as 'idle' | 'syncing' | 'synced' | 'error',
+    message: ''
   }
 })
 log('loaded', state.sections.length, 'sections')
@@ -195,10 +205,90 @@ const pushNow = async () => {
 }
 
 const scheduleSync = () => {
+  scheduleRelay()
   if (!state.sync.enabled) return
   clearTimeout(syncTimer)
   syncTimer = setTimeout(pushNow, SYNC_DELAY_MS)
 }
+
+// ---- Sync with a phone, through the relay ----
+
+let relayTimer: ReturnType<typeof setTimeout> | undefined
+/** How long to gather edits before sending them to the relay. */
+const RELAY_DELAY_MS = 1200
+/** How often an open page asks the relay for changes from the other devices. */
+const RELAY_POLL_MS = 15_000
+
+const snapshotNow = (): Snapshot => ({
+  // Plain copies: the page's reactive objects don't survive JSON's round trip as lists otherwise.
+  updatedAt, welcomed: state.welcomed,
+  sections: JSON.parse(JSON.stringify(state.sections)),
+  settings: JSON.parse(JSON.stringify(state.settings)),
+  pages: JSON.parse(JSON.stringify(state.pages))
+})
+
+const relayFailed = (e: unknown) => {
+  state.relay.status = 'error'
+  state.relay.message = "Couldn't reach sync. Your changes are saved here and will go when it's back."
+  console.warn('[tabscape] Relay sync failed', e)
+}
+
+/** Sends this device's copy; if another device got there first with a newer one, takes theirs instead. */
+const relayPush = async (tries = 2): Promise<void> => {
+  clearTimeout(relayTimer)
+  relayTimer = undefined
+  if (!state.relay.paired) return
+  state.relay.status = 'syncing'
+  try {
+    const { newer } = await pushRemote(snapshotNow())
+    if (newer && newer.updatedAt > updatedAt) applyFromRelay(newer)
+    else if (newer && tries > 1) return relayPush(tries - 1)
+    state.relay.status = 'synced'
+    state.relay.message = ''
+  } catch (e) {
+    relayFailed(e)
+  }
+}
+
+const scheduleRelay = () => {
+  if (!state.relay.paired) return
+  clearTimeout(relayTimer)
+  relayTimer = setTimeout(() => relayPush(), RELAY_DELAY_MS)
+}
+
+/** Takes the group's copy, and passes it on to Chrome's sync too if that's on. */
+const applyFromRelay = (remote: Snapshot) => {
+  applyRemote(remote)
+  if (state.sync.enabled) pushNow()
+}
+
+/** Lines this device up with the group: takes a newer copy, or sends ours if it's the newer one. */
+const relayReconcile = async () => {
+  if (!state.relay.paired) return
+  try {
+    const remote = await readRemote()
+    if (remote && remote.updatedAt > updatedAt) {
+      applyFromRelay(remote)
+      state.relay.status = 'synced'
+      state.relay.message = ''
+    } else if (remote && remote.updatedAt < updatedAt) {
+      await relayPush()
+    } else if (state.relay.status !== 'syncing') {
+      state.relay.status = 'synced'
+    }
+  } catch (e) {
+    relayFailed(e)
+  }
+}
+
+// While the page is open and in view, it asks for the other devices' changes now and then, and
+// straight away when it comes back into view.
+setInterval(() => {
+  if (state.relay.paired && document.visibilityState === 'visible') relayReconcile()
+}, RELAY_POLL_MS)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') relayReconcile()
+})
 
 /** Something here changed: stamp it, and pass it on to sync. */
 const touched = () => {
@@ -271,7 +361,7 @@ onRemoteChange(remoteUpdatedAt => {
  * on the setup. Capped, so a slow sync never holds the page back.
  */
 export const storeReady: Promise<void> = Promise.race([
-  reconcile(),
+  Promise.all([reconcile(), relayReconcile()]).then(() => {}),
   new Promise<void>(resolve => setTimeout(resolve, 800))
 ])
 
@@ -298,6 +388,8 @@ window.addEventListener('storage', e => {
     state.icons = cleanIcons(parse(e.newValue))
   } else if (e.key === WELCOMED_KEY) {
     state.welcomed = e.newValue === '1'
+  } else if (isPairingKey(e.key)) {
+    state.relay.paired = isPaired()
   } else if (e.key === UPDATED_KEY) {
     updatedAt = Number(e.newValue) || 0
   } else if (e.key === SETTINGS_KEY) {
@@ -332,6 +424,66 @@ const pruneIcons = () => {
   if (stale.length) log('pruned', stale.length, 'unused link images')
 }
 storeReady.then(pruneIcons)
+
+/**
+ * Starts syncing with a phone: a new group, sent this device's copy straight away so the phone
+ * finds the links there when it joins. Returns the link for the QR code.
+ */
+const connectPhone = async () => {
+  if (!state.relay.paired) {
+    startPairing()
+    state.relay.paired = true
+  }
+  await relayPush()
+  return pairingLink()
+}
+
+/**
+ * Joins a group (the phone, from the QR code's link): takes the group's copy, whatever is newer,
+ * keeping this device's own links so they can be put back. Says whether it worked.
+ */
+const joinGroup = async (secret: string) => {
+  if (!joinPairing(secret)) return false
+  state.relay.paired = true
+  state.relay.status = 'syncing'
+  try {
+    const remote = await readRemote(true)
+    if (remote) {
+      if (!getRaw(PRESYNC_KEY)) {
+        setRaw(PRESYNC_KEY, lastWritten[SECTIONS_KEY] ?? JSON.stringify(state.sections))
+        state.sync.canRestore = true
+      }
+      applyFromRelay(remote)
+    } else {
+      await relayPush()
+    }
+    state.relay.status = 'synced'
+    state.relay.message = ''
+    return true
+  } catch (e) {
+    relayFailed(e)
+    return false
+  }
+}
+
+/** This device stops syncing with the others (they carry on between themselves). */
+const disconnectPhone = () => {
+  leavePairing()
+  clearTimeout(relayTimer)
+  state.relay.paired = false
+  state.relay.status = 'idle'
+  state.relay.message = ''
+}
+
+// The iPhone app hands over a group to join when its camera opens a pairing link (tabscape://pair).
+if (inApp) {
+  ;(window as Window & { tabscapePair?: (secret: string) => void }).tabscapePair = secret => {
+    joinGroup(secret).then(ok => {
+      ;(window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } }).ReactNativeWebView
+        ?.postMessage(JSON.stringify({ type: 'paired', ok }))
+    })
+  }
+}
 
 export const useStartpage = () => {
   /** A new, empty section, on the given page (the first if none). */
@@ -500,6 +652,7 @@ export const useStartpage = () => {
     addLink, removeLink, moveLink,
     exportData, importData, resetLinks, resetSettings,
     completeWelcome, setSyncEnabled, restorePreSync,
+    connectPhone, disconnectPhone, pairingLink, syncWithPhoneNow: relayReconcile,
     addSortedBookmarks, addPage, removePage, setLinkIcon
   }
 }
