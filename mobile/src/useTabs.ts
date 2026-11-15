@@ -2,6 +2,7 @@ import { File } from 'expo-file-system'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { log } from './config'
 import type { Rgb } from './lib/color'
+import { addArchived, addClosed, takeClosed, type Visit } from './lib/history'
 import { keys, load, save } from './lib/storage'
 
 /** One open tab. A null url is the Tabscape start page. */
@@ -13,6 +14,12 @@ export interface Tab {
   thumbnail?: string
   /** The site's accent colour, which tints the bar like Arc's. */
   accent?: Rgb
+  /** Keeps no history, cookies or anything else, and isn't brought back next launch. */
+  private?: boolean
+  /** Asks sites for their full desktop version. */
+  desktop?: boolean
+  /** When it was last the tab showing (ms since 1970), for tidying away old tabs. */
+  lastSeen?: number
 }
 
 interface Saved {
@@ -24,7 +31,9 @@ interface Saved {
 const SAVE_AFTER = 600
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-const blankTab = (url: string | null = null): Tab => ({ id: newId(), url, title: url ? '' : 'Start page' })
+const blankTab = (url: string | null = null, isPrivate = false): Tab => ({
+  id: newId(), url, title: url ? '' : 'Start page', lastSeen: Date.now(), ...(isPrivate && { private: true })
+})
 
 /** Tab pictures are files; once nothing shows one any more it's deleted, so they don't pile up. */
 const deletePicture = (uri?: string) => {
@@ -46,9 +55,21 @@ const changes = (tab: Tab, change: Partial<Tab>) =>
     return before !== after
   })
 
+/** A tab worth bringing back: a page, not a start page, and not a private one. */
+const remembered = (tabs: Tab[]): Visit[] =>
+  tabs.filter(t => t.url && !t.private).map(t => ({ url: t.url!, title: t.title, at: Date.now() }))
+
+export interface OpenOptions {
+  private?: boolean
+  /** Opens behind the one showing, which stays showing. */
+  background?: boolean
+  title?: string
+}
+
 /**
- * The open tabs and which one is showing, kept on the device so they're there next launch.
- * Only the showing tab has a live web view; the rest are an address, a title and a picture.
+ * The open tabs and which one is showing, kept on the device so they're there next launch
+ * (private ones aren't). Only the showing tab has a live web view; the rest are an address,
+ * a title and a picture.
  */
 export const useTabs = () => {
   const [tabs, setTabs] = useState<Tab[]>(() => [blankTab()])
@@ -59,12 +80,16 @@ export const useTabs = () => {
   /** The tabs as they are now, for working out what closing one leaves. */
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
+  const currentRef = useRef(currentId)
+  currentRef.current = currentId
 
   // Bring back last launch's tabs. Pictures are temporary files that may be gone, so they're dropped.
+  // Tabs from before tabs had a time are taken as seen now, so none is tidied away at once.
   useEffect(() => {
     load<Saved | null>(keys.tabs, null).then(saved => {
       if (saved?.tabs?.length) {
-        setTabs(saved.tabs.map(t => ({ ...t, thumbnail: undefined })))
+        const now = Date.now()
+        setTabs(saved.tabs.map(t => ({ ...t, thumbnail: undefined, lastSeen: t.lastSeen ?? now })))
         setCurrentId(saved.tabs.some(t => t.id === saved.currentId) ? saved.currentId : saved.tabs[0].id)
         log('restored', saved.tabs.length, 'tabs')
       }
@@ -74,19 +99,36 @@ export const useTabs = () => {
   }, [])
 
   // Saved once things settle, not on every title and picture change while a page loads.
-  // Pictures aren't kept between launches, so they aren't written.
+  // Pictures aren't kept between launches, so they aren't written; private tabs aren't kept at all.
   useEffect(() => {
     if (!ready.current) return
     const timer = setTimeout(() => {
-      save(keys.tabs, { tabs: tabs.map(({ thumbnail, ...rest }) => rest), currentId } satisfies Saved)
+      const kept = tabs.filter(t => !t.private).map(({ thumbnail, ...rest }) => rest)
+      save(keys.tabs, { tabs: kept, currentId: kept.some(t => t.id === currentId) ? currentId : (kept[0]?.id ?? '') } satisfies Saved)
     }, SAVE_AFTER)
     return () => clearTimeout(timer)
   }, [tabs, currentId])
 
   const current = tabs.find(t => t.id === currentId) ?? tabs[0]
 
-  const openTab = useCallback((url: string | null = null) => {
-    const tab = blankTab(url)
+  /** Shows a tab. It and the one you left are marked as seen now. */
+  const select = useCallback((id: string) => {
+    const now = Date.now()
+    const left = currentRef.current
+    setTabs(all => all.map(t => (t.id === id || t.id === left ? { ...t, lastSeen: now } : t)))
+    setCurrentId(id)
+  }, [])
+
+  const openTab = useCallback((url: string | null = null, options: OpenOptions = {}) => {
+    const tab = { ...blankTab(url, options.private), ...(options.title && { title: options.title }) }
+    if (options.background) {
+      // Just after the one showing, as Safari puts it.
+      setTabs(all => {
+        const at = all.findIndex(t => t.id === currentRef.current)
+        return [...all.slice(0, at + 1), tab, ...all.slice(at + 1)]
+      })
+      return tab
+    }
     setTabs(all => [...all, tab])
     setCurrentId(tab.id)
     return tab
@@ -104,12 +146,13 @@ export const useTabs = () => {
     })
   }, [])
 
-  const closeTab = useCallback((id: string) => {
+  /** Takes tabs away; if none would be left, a fresh start page takes their place. */
+  const remove = useCallback((ids: string[]) => {
     const all = tabsRef.current
-    const index = all.findIndex(t => t.id === id)
-    if (index < 0) return
-    deletePicture(all[index].thumbnail)
-    const rest = all.filter(t => t.id !== id)
+    const going = all.filter(t => ids.includes(t.id))
+    if (!going.length) return
+    going.forEach(t => deletePicture(t.thumbnail))
+    const rest = all.filter(t => !ids.includes(t.id))
     if (!rest.length) {
       const fresh = blankTab()
       tabsRef.current = [fresh]
@@ -119,16 +162,51 @@ export const useTabs = () => {
     }
     tabsRef.current = rest
     setTabs(rest)
-    setCurrentId(now => (now === id ? rest[Math.min(index, rest.length - 1)].id : now))
+    setCurrentId(now => {
+      if (!ids.includes(now)) return now
+      // The showing tab went: the one that took its place, of the same kind (private or not) if there is one.
+      const was = all.find(t => t.id === now)
+      const index = all.findIndex(t => t.id === now)
+      const alike = rest.filter(t => !!t.private === !!was?.private)
+      const pool = alike.length ? alike : rest
+      const after = pool.find(t => all.indexOf(t) > index)
+      return (after ?? pool[pool.length - 1]).id
+    })
   }, [])
 
-  const closeAll = useCallback(() => {
-    tabsRef.current.forEach(t => deletePicture(t.thumbnail))
-    const fresh = blankTab()
-    tabsRef.current = [fresh]
-    setTabs([fresh])
-    setCurrentId(fresh.id)
-  }, [])
+  const closeTab = useCallback((id: string) => {
+    addClosed(remembered(tabsRef.current.filter(t => t.id === id)))
+    remove([id])
+  }, [remove])
 
-  return { restored, tabs, current, currentId, select: setCurrentId, openTab, updateTab, closeTab, closeAll }
+  /** Closes every tab, or every private one, or every one that isn't. */
+  const closeAll = useCallback((isPrivate?: boolean) => {
+    const going = tabsRef.current.filter(t => isPrivate === undefined || !!t.private === isPrivate)
+    addClosed(remembered(going))
+    remove(going.map(t => t.id))
+  }, [remove])
+
+  /** Brings back the tab closed most recently. */
+  const reopenClosed = useCallback(async () => {
+    const visit = await takeClosed()
+    if (!visit) return null
+    return openTab(visit.url, { title: visit.title })
+  }, [openTab])
+
+  /**
+   * Tidies away tabs not opened for a while (never the one showing, and never private ones,
+   * which go when the app does anyway). Returns how many.
+   */
+  const archiveOld = useCallback((afterHours: number) => {
+    if (afterHours <= 0) return 0
+    const cutoff = Date.now() - afterHours * 3600_000
+    const old = tabsRef.current.filter(t => t.id !== currentRef.current && !t.private && (t.lastSeen ?? Date.now()) < cutoff)
+    if (!old.length) return 0
+    addArchived(remembered(old))
+    remove(old.map(t => t.id))
+    log('tidied away', old.length, 'tabs')
+    return old.length
+  }, [remove])
+
+  return { restored, tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll, reopenClosed, archiveOld }
 }

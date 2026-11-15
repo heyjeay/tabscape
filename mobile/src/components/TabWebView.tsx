@@ -1,8 +1,9 @@
-import { forwardRef, useImperativeHandle, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
 import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
 import { accentScript } from '../lib/color'
+import { textSizesAtStart } from '../lib/sites'
 import { isStartPageUrl, startPageSource } from '../lib/startPage'
 import type { Tab } from '../useTabs'
 
@@ -41,6 +42,8 @@ interface Props {
   onNewWindow: (url: string) => void
   /** Where the page is scrolled to, and how tall it and the window are. */
   onScroll: (y: number, contentHeight: number, viewHeight: number) => void
+  /** Each site's own text size (percent, by host), set as its pages start. */
+  textSizes: Record<string, number>
 }
 
 /** The page methods used here. */
@@ -68,7 +71,57 @@ const releaseScript = `(function () {
   };
   window.addEventListener('touchend', done, { capture: true, passive: true });
   window.addEventListener('touchcancel', done, { capture: true, passive: true });
-})(); true;`
+})();`
+
+/**
+ * Also run in each web page before it loads: holding a finger on a link asks the app for its
+ * menu (new tab, background, copy, share) instead of iOS's, and the tap that would follow is
+ * dropped. Not on the start page, which has its own long presses.
+ */
+const linkPressScript = `(function () {
+  if (location.protocol === 'file:') return;
+  var post = function (data) { window.ReactNativeWebView.postMessage(JSON.stringify(data)); };
+  var timer = null, x = 0, y = 0, held = false;
+  var addStyle = function () {
+    var style = document.createElement('style');
+    style.textContent = 'a[href]{-webkit-touch-callout:none;-webkit-user-select:none}';
+    (document.head || document.documentElement).appendChild(style);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addStyle); else addStyle();
+  var stop = function () { clearTimeout(timer); timer = null; };
+  document.addEventListener('touchstart', function (e) {
+    held = false;
+    stop();
+    if (e.touches.length !== 1 || !e.target.closest) return;
+    var link = e.target.closest('a[href]');
+    if (!link || !/^https?:/i.test(link.href)) return;
+    x = e.touches[0].clientX;
+    y = e.touches[0].clientY;
+    timer = setTimeout(function () {
+      held = true;
+      var img = link.querySelector('img');
+      var image = img && (img.currentSrc || img.src);
+      post({
+        type: 'linkPress',
+        url: link.href,
+        text: (link.innerText || link.title || (img && img.alt) || '').replace(/\\s+/g, ' ').trim().slice(0, 120),
+        image: image && /^https?:/i.test(image) ? image : null
+      });
+    }, 500);
+  }, { capture: true, passive: true });
+  document.addEventListener('touchmove', function (e) {
+    var t = e.touches[0];
+    if (t && (Math.abs(t.clientX - x) > 10 || Math.abs(t.clientY - y) > 10)) stop();
+  }, { capture: true, passive: true });
+  document.addEventListener('touchend', stop, { capture: true, passive: true });
+  document.addEventListener('touchcancel', stop, { capture: true, passive: true });
+  document.addEventListener('click', function (e) {
+    if (!held) return;
+    held = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+})();`
 
 /** Schemes the page itself handles; anything else (tel:, mailto:, app links) goes to iOS. */
 const WEB = /^(https?|file|about|data|blob):/i
@@ -78,11 +131,19 @@ const WEB = /^(https?|file|about|data|blob):/i
  * what it loads only changes when asked (load), never because the address it reports changed.
  */
 export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebView(
-  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll },
+  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll, textSizes },
   ref
 ) {
   const web = useRef<WebViewInstance>(null)
-  const [source, setSource] = useState(() => (tab.url ? { uri: tab.url } : startPageSource))
+  const [source, setSource] = useState<{ uri: string } | typeof startPageSource>(() => (tab.url ? { uri: tab.url } : startPageSource))
+  /**
+   * A private tab's pages are kept apart: nothing they set (cookies, storage) is kept, and it's
+   * all gone when the tab is left. Its start page isn't, or it couldn't show your links; once a
+   * site is opened from it, the tab switches over to the sealed-off kind.
+   */
+  const [sealed, setSealed] = useState(!!tab.private && !!tab.url)
+  /** Desktop mode, as it was when the page was loaded; a change loads the page again in the other mode. */
+  const [desktop, setDesktop] = useState(!!tab.desktop)
   /** The address showing now, as the page last reported it. */
   const showing = useRef<string | null>(tab.url)
   /** Start page loads that have failed since you last loaded something, so putting it back can't go round forever. */
@@ -97,13 +158,26 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
    */
   const showStartPage = () => {
     handed.current += 1
+    setSealed(false)
     setSource({ ...startPageSource, html: `${startPageSource.html}<!-- ${handed.current} -->` })
+  }
+
+  /** Opens a web address; in a private tab, in the sealed-off kind of page. */
+  const open = (url: string) => {
+    if (tab.private) setSealed(true)
+    setSource({ uri: url })
+  }
+
+  // Desktop mode switched: the page showing loads again, asking for the other version.
+  if (desktop !== !!tab.desktop) {
+    setDesktop(!!tab.desktop)
+    if (showing.current && !isStartPageUrl(showing.current)) setSource({ uri: showing.current })
   }
 
   useImperativeHandle(ref, () => ({
     load: url => {
       failures.current = 0
-      if (url) setSource({ uri: url })
+      if (url) open(url)
       else showStartPage()
     },
     goBack: () => web.current?.goBack(),
@@ -136,10 +210,18 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
     }
   }
 
+  const atStart = useMemo(() => `${releaseScript}${linkPressScript}${textSizesAtStart(textSizes)} true;`, [textSizes])
+
   return (
     <WebView
+      // A new page for each kind (private or not, desktop or not): those are set as it's made.
+      key={`${sealed ? 'sealed' : 'open'}-${desktop ? 'desktop' : 'mobile'}`}
       ref={web}
       source={source}
+      incognito={sealed}
+      contentMode={desktop ? 'desktop' : 'recommended'}
+      // Web pages get the app's own link menu (see linkPressScript); the start page keeps iOS's.
+      allowsLinkPreview={!tab.url}
       originWhitelist={['*']}
       allowingReadAccessToURL={startPageSource.baseUrl}
       style={{ flex: 1, backgroundColor: 'transparent' }}
@@ -168,13 +250,18 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       onMessage={message}
       // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
       injectedJavaScript={accentScript}
-      injectedJavaScriptBeforeContentLoaded={releaseScript}
+      injectedJavaScriptBeforeContentLoaded={atStart}
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
         onScroll(contentOffset.y, contentSize.height, layoutMeasurement.height)
       }}
       onOpenWindow={event => onNewWindow(event.nativeEvent.targetUrl)}
       onShouldStartLoadWithRequest={request => {
+        // A private tab leaving its start page for a site: open it in a sealed-off page.
+        if (tab.private && !sealed && request.isTopFrame !== false && /^https?:/i.test(request.url)) {
+          open(request.url)
+          return false
+        }
         if (WEB.test(request.url)) return true
         log('handing to iOS:', request.url)
         Linking.openURL(request.url).catch(() => {})

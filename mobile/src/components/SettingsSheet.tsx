@@ -4,9 +4,10 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useEffect, useState } from 'react'
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { colors } from '../config'
+import { clearVisits } from '../lib/history'
 import { queueImport } from '../lib/savedPages'
 import { clearRecentSearches } from '../lib/searches'
-import { loadSettings, saveSettings, type BrowserSettings } from '../lib/settings'
+import { ARCHIVE_CHOICES, loadSettings, saveSettings, type BrowserSettings } from '../lib/settings'
 import { Glass } from './Glass'
 import { Icon } from './Icon'
 
@@ -65,6 +66,32 @@ export const SettingsSheet = ({ visible, onClose, onImportQueued }: Props) => {
             </Glass>
           </Pressable>
 
+          <Text style={styles.section}>Tabs</Text>
+          <Glass style={[styles.row, styles.column]}>
+            <View style={styles.columnTop}>
+              <Icon sf="archivebox" fallback="archive-outline" />
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle}>Archive tabs not opened for</Text>
+                <Text style={styles.rowNote}>Like Arc, old tabs tidy themselves away. Find them in History → Archived.</Text>
+              </View>
+            </View>
+            <View style={styles.choices}>
+              {ARCHIVE_CHOICES.map(choice => {
+                const on = (settings?.archiveAfter ?? 24) === choice.hours
+                return (
+                  <Pressable
+                    key={choice.hours}
+                    style={[styles.choice, on && styles.choiceOn]}
+                    onPress={() => settings && change({ ...settings, archiveAfter: choice.hours })}
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{choice.label}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </Glass>
+
           <Text style={styles.section}>Search</Text>
           <Glass style={styles.row}>
             <Icon sf="text.magnifyingglass" fallback="search" />
@@ -91,6 +118,31 @@ export const SettingsSheet = ({ visible, onClose, onImportQueued }: Props) => {
             </Glass>
           </Pressable>
 
+          <Text style={styles.section}>Privacy</Text>
+          <Pressable
+            onPress={() =>
+              Alert.alert('Clear history?', 'Pages you visited and tabs you closed are forgotten. Archived tabs stay.', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Clear history',
+                  style: 'destructive',
+                  onPress: () => {
+                    clearVisits('history')
+                    clearVisits('closed')
+                  }
+                }
+              ])
+            }
+          >
+            <Glass style={styles.row} interactive>
+              <Icon sf="trash" fallback="trash-outline" />
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle}>Clear history</Text>
+                <Text style={styles.rowNote}>History stays on this iPhone. Private tabs never add to it.</Text>
+              </View>
+            </Glass>
+          </Pressable>
+
           <Text style={styles.about}>Tabscape {Constants.expoConfig?.version ?? ''} · no accounts, no tracking</Text>
         </ScrollView>
       </LinearGradient>
@@ -109,5 +161,12 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1, gap: 3 },
   rowTitle: { color: colors.text, fontSize: 17 },
   rowNote: { color: colors.secondary, fontSize: 13 },
+  column: { flexDirection: 'column', alignItems: 'stretch', gap: 14 },
+  columnTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  choices: { flexDirection: 'row', gap: 6, padding: 3, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' },
+  choice: { flex: 1, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  choiceOn: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  choiceText: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
+  choiceTextOn: { color: colors.text },
   about: { color: colors.dim, fontSize: 13, textAlign: 'center', marginTop: 28 }
 })

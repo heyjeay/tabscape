@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
-import { isSearch, toUrl } from '../lib/address'
+import { hostOf, isSearch, toUrl } from '../lib/address'
+import { findInHistory, type Visit } from '../lib/history'
 import { addRecentSearch, clearRecentSearches, fetchSuggestions, loadRecentSearches } from '../lib/searches'
 import { loadSettings } from '../lib/settings'
 import { Glass } from './Glass'
@@ -13,7 +14,15 @@ interface Props {
   initial: string
   onGo: (url: string) => void
   onClose: () => void
+  /** In a private tab, searches aren't remembered. */
+  isPrivate?: boolean
 }
+
+/** A row under the field: a page from your history, a suggestion, or a recent search. */
+type Row = { kind: 'page'; visit: Visit } | { kind: 'suggestion' | 'recent'; text: string }
+
+/** History matches shown above the suggestions. */
+const PAGES = 2
 
 /** Rows of suggestions shown at once, so the panel stays above the keyboard. */
 const MAX_ROWS = 5
@@ -23,11 +32,12 @@ const MAX_ROWS = 5
  * and rides on top of it. Suggestions appear under the field as you type; your recent searches
  * when it's empty. A tap on the dimmed page closes it.
  */
-export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
+export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Props) => {
   const insets = useSafeAreaInsets()
   const [mounted, setMounted] = useState(visible)
   const [text, setText] = useState(initial)
   const [suggestions, setSuggestions] = useState<string[]>([])
+  const [pages, setPages] = useState<Visit[]>([])
   const [recent, setRecent] = useState<string[]>([])
   const [suggest, setSuggest] = useState(true)
 
@@ -43,6 +53,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
       setMounted(true)
       setText(initial)
       setSuggestions([])
+      setPages([])
       loadRecentSearches().then(setRecent)
       loadSettings().then(settings => setSuggest(settings.suggestions))
       Animated.timing(dim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
@@ -68,6 +79,16 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
     }
   }, [insets.bottom, lift])
 
+  // Pages from your history that match, straight away (they're on the device).
+  useEffect(() => {
+    if (!visible) return
+    let live = true
+    findInHistory(text, PAGES).then(found => live && setPages(found))
+    return () => {
+      live = false
+    }
+  }, [text, visible])
+
   // Asks for suggestions once typing pauses, and drops answers to anything already typed over.
   useEffect(() => {
     if (!visible || !suggest) return
@@ -88,13 +109,18 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
   const open = (typed: string) => {
     const url = toUrl(typed)
     if (!url) return
-    if (isSearch(typed)) addRecentSearch(typed.trim())
+    if (isSearch(typed) && !isPrivate) addRecentSearch(typed.trim())
     onGo(url)
     onClose()
   }
 
   const showingRecent = !text
-  const rows = (showingRecent ? recent : suggestions).slice(0, MAX_ROWS)
+  const rows: Row[] = showingRecent
+    ? recent.slice(0, MAX_ROWS).map(text => ({ kind: 'recent', text }))
+    : [
+        ...pages.map(visit => ({ kind: 'page' as const, visit })),
+        ...suggestions.map(text => ({ kind: 'suggestion' as const, text }))
+      ].slice(0, MAX_ROWS)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={visible ? 'box-none' : 'none'}>
@@ -147,26 +173,39 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose }: Props) => {
 
           <FlatList
             data={rows}
-            keyExtractor={item => item}
+            keyExtractor={item => (item.kind === 'page' ? `page:${item.visit.url}` : `${item.kind}:${item.text}`)}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={styles.row}>
-                <Pressable style={styles.rowMain} onPress={() => open(item)}>
-                  <Icon
-                    sf={showingRecent ? 'clock.arrow.circlepath' : 'magnifyingglass'}
-                    fallback={showingRecent ? 'time-outline' : 'search'}
-                    size={18}
-                    color={colors.secondary}
-                  />
-                  <Text style={styles.rowText} numberOfLines={1}>{item}</Text>
+            renderItem={({ item }) =>
+              item.kind === 'page' ? (
+                <Pressable style={styles.row} onPress={() => {
+                  onGo(item.visit.url)
+                  onClose()
+                }}>
+                  <Icon sf="clock" fallback="time-outline" size={18} color={colors.secondary} />
+                  <View style={styles.rowPage}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{item.visit.title || hostOf(item.visit.url)}</Text>
+                    <Text style={styles.rowNote} numberOfLines={1}>{hostOf(item.visit.url)}</Text>
+                  </View>
                 </Pressable>
-                {/* Puts it in the field to keep typing, like Safari. */}
-                <Pressable onPress={() => setText(item)} hitSlop={10} accessibilityLabel={`Edit ${item}`}>
-                  <Icon sf="arrow.up.left" fallback="arrow-up-outline" size={16} color={colors.secondary} />
-                </Pressable>
-              </View>
-            )}
+              ) : (
+                <View style={styles.row}>
+                  <Pressable style={styles.rowMain} onPress={() => open(item.text)}>
+                    <Icon
+                      sf={item.kind === 'recent' ? 'clock.arrow.circlepath' : 'magnifyingglass'}
+                      fallback={item.kind === 'recent' ? 'time-outline' : 'search'}
+                      size={18}
+                      color={colors.secondary}
+                    />
+                    <Text style={styles.rowText} numberOfLines={1}>{item.text}</Text>
+                  </Pressable>
+                  {/* Puts it in the field to keep typing, like Safari. */}
+                  <Pressable onPress={() => setText(item.text)} hitSlop={10} accessibilityLabel={`Edit ${item.text}`}>
+                    <Icon sf="arrow.up.left" fallback="arrow-up-outline" size={16} color={colors.secondary} />
+                  </Pressable>
+                </View>
+              )
+            }
           />
         </Glass>
       </Animated.View>
@@ -184,5 +223,8 @@ const styles = StyleSheet.create({
   headingText: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 12 },
   rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  rowText: { flex: 1, color: colors.text, fontSize: 17 }
+  rowText: { flex: 1, color: colors.text, fontSize: 17 },
+  rowPage: { flex: 1, gap: 1 },
+  rowTitle: { color: colors.text, fontSize: 17 },
+  rowNote: { color: colors.secondary, fontSize: 13 }
 })

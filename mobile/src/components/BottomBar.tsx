@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur'
 import { GlassView } from 'expo-glass-effect'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useEffect, useRef, type RefObject } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native'
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, View } from 'react-native'
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass, liquidGlass } from './Glass'
@@ -24,7 +24,40 @@ interface Props {
   stackRef: RefObject<ViewRef | null>
   onTabs: () => void
   onNewTab: () => void
+  /** Holding +: the tab closed last comes back. */
+  onReopen: () => void
   onMenu: () => void
+  /** A swipe along the bar: to the next tab (swiped left) or the one before (swiped right). */
+  onSwipe: (next: boolean) => void
+}
+
+/** How far (points) or how fast a swipe along the bar has to go to change tabs. */
+const SWIPE = 50
+const FLICK = 0.5
+
+/**
+ * Swiping along the bar moves to the next or previous tab, like Arc and Safari. The buttons
+ * follow your finger a little, then spring back; past the last tab they only stretch.
+ */
+const useSwipe = (onSwipe: Props['onSwipe']) => {
+  const slide = useRef(new Animated.Value(0)).current
+  const latest = useRef(onSwipe)
+  latest.current = onSwipe
+  const swipe = useRef(
+    PanResponder.create({
+      // Sideways only, so taps on the buttons still work.
+      onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_, g) => slide.setValue(g.dx * 0.35),
+      onPanResponderRelease: (_, g) => {
+        const far = Math.abs(g.dx) > SWIPE || Math.abs(g.vx) > FLICK
+        if (far) latest.current(g.dx < 0)
+        Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 6 }).start()
+      },
+      onPanResponderTerminate: () => Animated.spring(slide, { toValue: 0, useNativeDriver: true }).start()
+    })
+  ).current
+  return { slide, handlers: swipe.panHandlers }
 }
 
 /** Arc's sizes, measured from its bar (points): the row of buttons, and the space above it. */
@@ -44,12 +77,16 @@ export const barTravel = barSpace
  * Arc's bar: a dark grey panel along the bottom with a fine light line on top, and on it the
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
-export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onMenu }: Props) => {
-  const accent = tab.accent ?? DEFAULT_ACCENT
+export const BottomBar = ({
+  tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, onSwipe
+}: Props) => {
+  // A private tab's bar is a plain deep violet whatever the site, so you can tell at a glance.
+  const accent = tab.private ? PRIVATE : (tab.accent ?? DEFAULT_ACCENT)
+  const { slide, handlers } = useSwipe(onSwipe)
   return (
   <Animated.View
+    {...handlers}
     style={[styles.bar, { paddingBottom: bottomPad(bottomInset), transform: [{ translateY: hide }] }]}
-    pointerEvents="box-none"
   >
     {/*
       The panel: iOS 26 Liquid Glass tinted with the site's colour, with that colour deepening
@@ -84,12 +121,17 @@ export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInse
 
     {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
     <ProgressLine progress={progress} loading={loading} accent={accent} />
-    <View style={styles.row}>
-      <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} tabs`} hitSlop={10} style={styles.side}>
+    <Animated.View style={[styles.row, { transform: [{ translateX: slide }] }]}>
+      <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} ${tab.private ? 'private ' : ''}tabs`} hitSlop={10} style={styles.side}>
         <TabStack tab={tab} behind={behind} frontRef={stackRef} />
+        {tab.private && (
+          <View style={styles.badge} pointerEvents="none">
+            <Icon sf="eye.slash.fill" fallback="eye-off" size={10} weight="bold" />
+          </View>
+        )}
       </Pressable>
 
-      <Pressable onPress={onNewTab} accessibilityLabel="New tab">
+      <Pressable onPress={onNewTab} onLongPress={onReopen} delayLongPress={400} accessibilityLabel={tab.private ? 'New private tab' : 'New tab'} accessibilityHint="Hold to reopen the tab you closed last">
         <Glass style={styles.plus} interactive>
           <Icon sf="plus" fallback="add" size={20} weight="semibold" />
         </Glass>
@@ -102,12 +144,13 @@ export const BottomBar = ({ tab, behind, tabCount, progress, loading, bottomInse
           </Glass>
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   </Animated.View>
   )
 }
 
 const CHARCOAL: Rgb = [44, 44, 48]
+const PRIVATE: Rgb = [88, 64, 170]
 const WHITE: Rgb = [255, 255, 255]
 const SKY: Rgb = [64, 156, 255]
 
@@ -200,5 +243,10 @@ const styles = StyleSheet.create({
   card: { position: 'absolute', width: 27, height: 33, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   behind: { overflow: 'hidden', backgroundColor: '#2c2c35', transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
   front: { transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }] },
-  frontBox: { overflow: 'hidden' }
+  frontBox: { overflow: 'hidden' },
+  badge: {
+    position: 'absolute', right: 4, bottom: -2, width: 18, height: 18, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#5840aa',
+    borderWidth: 1.5, borderColor: '#1e1b2c'
+  }
 })

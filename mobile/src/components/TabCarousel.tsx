@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
-  Alert, Animated, Easing, PanResponder, Pressable, StyleSheet, View, useWindowDimensions,
+  Alert, Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions,
   type NativeScrollEvent, type NativeSyntheticEvent
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,6 +15,8 @@ import { Favicon, TabPicture } from './TabPicture'
 /** The row of buttons along the bottom, and the title above each card. */
 const BUTTONS = 84
 const TITLE = 38
+/** The Tabs / Private switch along the top. */
+const SWITCH = 44
 
 interface Props {
   tabs: Tab[]
@@ -32,6 +34,11 @@ interface Props {
   onCloseAll: () => void
   onNewTab: () => void
   onSettings: () => void
+  /** Holding +: the tab closed last comes back. */
+  onReopen: () => void
+  /** Showing private tabs (and + opens one), or the others. */
+  isPrivate: boolean
+  onSwitch: (isPrivate: boolean) => void
 }
 
 /** What the cards call back with. Made once, so the cards only redraw when they themselves change. */
@@ -53,10 +60,10 @@ export const TabCarousel = (props: Props) => {
   const insets = useSafeAreaInsets()
   // Arc's proportions: cards a little over half the screen wide and about two thirds as tall.
   const cardWidth = Math.min(width * 0.57, 400)
-  const cardHeight = Math.min(height * 0.65, height - insets.top - insets.bottom - 190)
+  const cardHeight = Math.min(height * 0.65, height - insets.top - insets.bottom - 190 - SWITCH)
   const side = (width - cardWidth) / 2
-  // The cards sit centred in the space above the buttons.
-  const area = height - insets.top - (Math.max(insets.bottom, 12) + BUTTONS)
+  // The cards sit centred in the space between the switch and the buttons.
+  const area = height - insets.top - SWITCH - (Math.max(insets.bottom, 12) + BUTTONS)
   const cardTop = Math.max(0, (area - (cardHeight + TITLE)) / 2)
 
   /**
@@ -162,9 +169,9 @@ export const TabCarousel = (props: Props) => {
   }), [])
 
   const confirmCloseAll = () =>
-    Alert.alert('Close all tabs?', undefined, [
+    Alert.alert(props.isPrivate ? 'Close all private tabs?' : 'Close all tabs?', undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: `Close all ${shown.length} tabs`, style: 'destructive', onPress: props.onCloseAll }
+      { text: `Close all ${shown.length} ${props.isPrivate ? 'private ' : ''}tabs`, style: 'destructive', onPress: props.onCloseAll }
     ])
 
   return (
@@ -180,7 +187,7 @@ export const TabCarousel = (props: Props) => {
         snapToInterval={cardWidth}
         decelerationRate="fast"
         contentOffset={{ x: start * cardWidth, y: 0 }}
-        style={{ position: 'absolute', top: insets.top, left: 0, right: 0, height: area, opacity: appear }}
+        style={{ position: 'absolute', top: insets.top + SWITCH, left: 0, right: 0, height: area, opacity: appear }}
         // Every card is laid out in the same spot and moved to its own place by animation, so
         // taking one away changes no layout (which would jump): the others glide into the gap.
         contentContainerStyle={{ width: shown.length * cardWidth + side * 2, height: area }}
@@ -205,6 +212,41 @@ export const TabCarousel = (props: Props) => {
         ))}
       </Animated.ScrollView>
 
+      {!shown.length && (
+        <Animated.View pointerEvents="none" style={[styles.empty, { top: insets.top + SWITCH, height: area, opacity: appear }]}>
+          <Icon sf={props.isPrivate ? 'eye.slash' : 'square.on.square'} fallback={props.isPrivate ? 'eye-off-outline' : 'copy-outline'} size={44} color={colors.secondary} />
+          <Text style={styles.emptyTitle}>{props.isPrivate ? 'Private tabs' : 'No tabs'}</Text>
+          <Text style={styles.emptyText}>
+            {props.isPrivate
+              ? "Private tabs keep no history, no cookies and nothing a site saves, and they're gone when you close the app. Tap + to open one."
+              : 'Tap + to open a tab.'}
+          </Text>
+        </Animated.View>
+      )}
+
+      {/* Tabs or private tabs, like Safari. Slides down rather than fading in: Liquid Glass doesn't render faded. */}
+      <Animated.View
+        style={[styles.switchWrap, {
+          top: insets.top,
+          transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [-120, 0] }) }]
+        }]}
+      >
+        <Glass style={styles.switch}>
+          {[false, true].map(mode => (
+            <Pressable
+              key={String(mode)}
+              onPress={() => mode !== props.isPrivate && props.onSwitch(mode)}
+              style={[styles.switchPart, mode === props.isPrivate && styles.switchOn]}
+              accessibilityLabel={mode ? 'Private tabs' : 'Tabs'}
+              accessibilityState={{ selected: mode === props.isPrivate }}
+            >
+              <Icon sf={mode ? 'eye.slash' : 'square.on.square'} fallback={mode ? 'eye-off-outline' : 'copy-outline'} size={15} color={mode === props.isPrivate ? colors.text : colors.secondary} />
+              <Text style={[styles.switchText, mode === props.isPrivate && styles.switchTextOn]}>{mode ? 'Private' : 'Tabs'}</Text>
+            </Pressable>
+          ))}
+        </Glass>
+      </Animated.View>
+
       {/* Slides up rather than fading in: Liquid Glass doesn't render faded. */}
       <Animated.View
         style={[styles.bottom, {
@@ -212,8 +254,14 @@ export const TabCarousel = (props: Props) => {
           transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) }]
         }]}
       >
-        <RoundButton sf="trash" fallback="trash-outline" label="Close all tabs" onPress={confirmCloseAll} />
-        <Pressable onPress={props.onNewTab} accessibilityLabel="New tab">
+        <RoundButton sf="trash" fallback="trash-outline" label="Close all tabs" onPress={() => shown.length && confirmCloseAll()} />
+        <Pressable
+          onPress={props.onNewTab}
+          onLongPress={props.onReopen}
+          delayLongPress={400}
+          accessibilityLabel={props.isPrivate ? 'New private tab' : 'New tab'}
+          accessibilityHint="Hold to reopen the tab you closed last"
+        >
           <Glass style={styles.plus} interactive>
             <Icon sf="plus" fallback="add" size={28} weight="semibold" />
           </Glass>
@@ -351,6 +399,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 30, paddingTop: 10
   },
   plus: { width: 124, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
+  switchWrap: { position: 'absolute', left: 0, right: 0, height: SWITCH, alignItems: 'center', justifyContent: 'center' },
+  switch: { flexDirection: 'row', height: 36, borderRadius: 18, padding: 3 },
+  switchPart: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, borderRadius: 15 },
+  switchOn: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  switchText: { color: colors.secondary, fontSize: 14, fontWeight: '600' },
+  switchTextOn: { color: colors.text },
+  empty: { position: 'absolute', left: 40, right: 40, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
+  emptyText: { color: colors.secondary, fontSize: 15, lineHeight: 21, textAlign: 'center' },
   round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 30, marginBottom: 8, paddingHorizontal: 4 },
   title: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '500' },

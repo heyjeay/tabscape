@@ -23,5 +23,9 @@ export const save = async (key: string, value: unknown) => {
 export const keys = {
   tabs: 'tabscape.tabs',
   recentSearches: 'tabscape.recentSearches',
-  savedPages: 'tabscape.saved'
+  savedPages: 'tabscape.saved',
+  history: 'tabscape.history',
+  closedTabs: 'tabscape.closedTabs',
+  archivedTabs: 'tabscape.archivedTabs',
+  sites: 'tabscape.sites'
 }

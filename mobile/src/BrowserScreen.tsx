@@ -1,25 +1,35 @@
+import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
-import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import {
+  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Platform, Share, StyleSheet, Text, View, useWindowDimensions
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
 import { BottomBar, barSpace, barTravel } from './components/BottomBar'
 import { FindBar, findScript } from './components/FindBar'
 import { Glass } from './components/Glass'
 import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
+import { HistorySheet } from './components/HistorySheet'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
 import { PULL_TO_REFRESH, PullRefresh } from './components/PullRefresh'
+import { ReaderView } from './components/ReaderView'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
 import { TopEdge } from './components/TopEdge'
 import { TabWebView, type PageState, type TabWebViewHandle } from './components/TabWebView'
 import { colors, log } from './config'
+import { hostOf } from './lib/address'
 import { parseColor, usableAccent } from './lib/color'
+import { recordVisit } from './lib/history'
+import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
+import { loadSettings } from './lib/settings'
+import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs } from './useTabs'
 
 /** Pull-to-refresh steps: past each distance (points), a tap, getting stronger. */
@@ -43,7 +53,12 @@ const DELIVERY_TRIES = 10
 export const BrowserScreen = () => {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
-  const { restored, tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll } = useTabs()
+  const { restored, tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll, reopenClosed, archiveOld } = useTabs()
+  const { sizeFor, setSize, sizesFor } = useTextSizes()
+  const isPrivate = !!current.private
+  /** The tabs of the same kind as the one showing (private or not): what the bar swipes through. */
+  const group = tabs.filter(t => !!t.private === isPrivate)
+  const textSize = sizeFor(current.url, isPrivate)
   const web = useRef<TabWebViewHandle>(null)
   const page = useRef<ComponentRef<typeof View>>(null)
   const stack = useRef<ComponentRef<typeof View>>(null)
@@ -62,7 +77,11 @@ export const BrowserScreen = () => {
   const [searchFrom, setSearchFrom] = useState('')
   const [finding, setFinding] = useState(false)
   const [notFound, setNotFound] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; info?: boolean } | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [article, setArticle] = useState<Article | null>(null)
+  /** The tab browser is showing private tabs. */
+  const [browsingPrivate, setBrowsingPrivate] = useState(false)
   const deliveryTries = useRef(0)
   const currentIdRef = useRef(currentId)
   currentIdRef.current = currentId
@@ -122,7 +141,7 @@ export const BrowserScreen = () => {
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 70)
       setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 150)
       armed.current = true
-      setPullPulse(Date.now())
+      setPullPulse(n => n + 1)
     } else {
       Haptics.impactAsync(PULL_LEVELS[level - 1][1])
     }
@@ -177,6 +196,8 @@ export const BrowserScreen = () => {
       else if (reloadSeen.current) setRefreshing(false)
     }
     updateTab(currentId, { url: state.url, title: state.url ? state.title : 'Start page' })
+    // Into history once it's loaded; never from a private tab.
+    if (!state.loading && state.url && !isPrivate) recordVisit(state.url, state.title)
     // A picture once it's drawn. A page reports several times as it finishes, so only the last
     // of those takes one; tied to this tab, in case another is showing by then.
     clearTimeout(pictureTimer.current)
@@ -197,6 +218,12 @@ export const BrowserScreen = () => {
     // Your finger came off the page while it was pulled down past its top.
     if (data.type === 'released') refresh()
     if (data.type === 'accent') updateTab(currentId, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
+    if (data.type === 'linkPress') linkMenu(String(data.url), String(data.text ?? ''), typeof data.image === 'string' ? data.image : null)
+    if (data.type === 'reader') {
+      const found = parseArticle(data)
+      if (found) setArticle(found)
+      else setNotice({ text: 'No article to read on this page', info: true })
+    }
     if (data.type === 'delivered') {
       const taken = Number(data.taken)
       if (taken < 0) {
@@ -208,7 +235,7 @@ export const BrowserScreen = () => {
       await removeDeliveredPages(Number(data.offered))
       if (data.imported !== null) {
         await clearPendingImport()
-        setNotice(data.imported ? 'Your links are here' : "That backup couldn't be read")
+        setNotice(data.imported ? { text: 'Your links are here' } : { text: "That backup couldn't be read", info: true })
       }
       log('start page took', taken, 'saved pages; import:', data.imported)
     }
@@ -219,8 +246,105 @@ export const BrowserScreen = () => {
     await addSavedPage({ url: current.url, title: current.title || current.url })
     setShowActions(false)
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    setNotice('Added to Tabscape')
+    setNotice({ text: 'Added to Tabscape' })
   }
+
+  /** Holding a link: what to do with it, in iOS's own menu. */
+  const linkMenu = (url: string, text: string, image: string | null) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    type Choice = [string, () => void]
+    const choices: Choice[] = [
+      ['Open in New Tab', () => {
+        snapshot()
+        openTab(url, { private: isPrivate, title: text })
+      }],
+      ['Open in Background', () => {
+        openTab(url, { private: isPrivate, background: true, title: text })
+        setNotice({ text: 'Opened in the background' })
+      }]
+    ]
+    if (!isPrivate) {
+      choices.push(['Open in Private Tab', () => {
+        snapshot()
+        openTab(url, { private: true, title: text })
+      }])
+    }
+    if (image) {
+      choices.push(['Open Image in New Tab', () => {
+        snapshot()
+        openTab(image, { private: isPrivate })
+      }])
+    }
+    choices.push(
+      ['Copy Link', () => {
+        Clipboard.setStringAsync(url).then(() => setNotice({ text: 'Link copied' })).catch(() => {})
+      }],
+      ['Share…', () => {
+        Share.share({ url, message: url }).catch(() => {})
+      }]
+    )
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: text || undefined,
+          message: url,
+          options: [...choices.map(([label]) => label), 'Cancel'],
+          cancelButtonIndex: choices.length,
+          userInterfaceStyle: 'dark'
+        },
+        index => choices[index]?.[1]()
+      )
+    } else {
+      Alert.alert(text || url, url, [
+        ...choices.slice(0, 2).map(([label, act]) => ({ text: label, onPress: act })),
+        { text: 'Cancel', style: 'cancel' as const }
+      ])
+    }
+  }
+
+  /** Swiping along the bar: the next tab, or the one before, of the same kind. */
+  const swipeTab = async (next: boolean) => {
+    const target = group[group.indexOf(current) + (next ? 1 : -1)]
+    if (!target) {
+      // The end of the row: a soft tap, and nothing moves.
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
+      return
+    }
+    Haptics.selectionAsync()
+    await snapshot()
+    select(target.id)
+  }
+
+  /** Holding +: the tab you closed last comes back. */
+  const reopen = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    await snapshot()
+    const tab = await reopenClosed()
+    setNotice(tab ? { text: `Reopened ${tab.title || hostOf(tab.url)}` } : { text: 'No closed tabs to reopen', info: true })
+  }
+
+  /** aA: the page's text size, a step bigger or smaller, remembered for the site. */
+  const changeTextSize = (up: boolean) => {
+    const next = stepSize(textSize, up)
+    setSize(current.url, next, isPrivate)
+    web.current?.inject(textSizeScript(next))
+  }
+
+  // Tabs not opened in a while are tidied away (as the app opens, and each time it comes back).
+  const tidyRef = useRef(async () => {})
+  tidyRef.current = async () => {
+    const { archiveAfter } = await loadSettings()
+    const count = archiveOld(archiveAfter)
+    if (count) setNotice({ text: `Archived ${count} old tab${count === 1 ? '' : 's'}`, info: true })
+  }
+  useEffect(() => {
+    if (!restored) return
+    tidyRef.current()
+    const watching = AppState.addEventListener('change', state => {
+      if (state === 'active') tidyRef.current()
+    })
+    return () => watching.remove()
+  }, [restored])
 
   /** A backup is waiting: take it to a start page (this tab if it is one, a new one if not). */
   const importQueued = () => {
@@ -238,7 +362,7 @@ export const BrowserScreen = () => {
   const newTab = () => {
     showBar(true)
     snapshot()
-    openTab()
+    openTab(null, { private: isPrivate })
     search('')
   }
 
@@ -249,6 +373,7 @@ export const BrowserScreen = () => {
     showBar(true)
     await snapshot()
     picking.current = false
+    setBrowsingPrivate(isPrivate)
     tabsAppear.setValue(0)
     setHiddenCards([currentId])
     growing.current = true
@@ -310,8 +435,9 @@ export const BrowserScreen = () => {
           onProgress={setProgress}
           onStartPageLoaded={deliver}
           onMessage={onMessage}
-          onNewWindow={url => openTab(url)}
+          onNewWindow={url => openTab(url, { private: isPrivate })}
           onScroll={onScroll}
+          textSizes={sizesFor(isPrivate)}
         />}
       </View>
       <TopEdge height={insets.top + 18} />
@@ -326,8 +452,12 @@ export const BrowserScreen = () => {
           }]}
         >
           <Glass style={styles.noticePill}>
-            <Icon sf="checkmark.circle.fill" fallback="checkmark-circle" size={20} />
-            <Text style={styles.noticeText}>{notice}</Text>
+            <Icon
+              sf={notice.info ? 'info.circle.fill' : 'checkmark.circle.fill'}
+              fallback={notice.info ? 'information-circle' : 'checkmark-circle'}
+              size={20}
+            />
+            <Text style={styles.noticeText} numberOfLines={1}>{notice.text}</Text>
           </Glass>
         </Animated.View>
       )}
@@ -344,8 +474,8 @@ export const BrowserScreen = () => {
       ) : (
         <BottomBar
           tab={current}
-          behind={tabs[tabs.indexOf(current) - 1] ?? tabs[tabs.indexOf(current) + 1]}
-          tabCount={tabs.length}
+          behind={group[group.indexOf(current) - 1] ?? group[group.indexOf(current) + 1]}
+          tabCount={group.length}
           progress={progress}
           loading={nav.loading}
           bottomInset={insets.bottom}
@@ -353,6 +483,8 @@ export const BrowserScreen = () => {
           stackRef={stack}
           onTabs={openTabs}
           onNewTab={newTab}
+          onReopen={reopen}
+          onSwipe={swipeTab}
           onMenu={() => {
             showBar(true)
             setShowActions(true)
@@ -383,11 +515,35 @@ export const BrowserScreen = () => {
           setShowActions(false)
           setShowSettings(true)
         }}
+        onReader={() => {
+          setShowActions(false)
+          web.current?.inject(readerScript)
+        }}
+        onHistory={() => {
+          setShowActions(false)
+          setShowHistory(true)
+        }}
+        textSize={textSize}
+        onTextSize={changeTextSize}
+        desktop={!!current.desktop}
+        onDesktop={() => {
+          setShowActions(false)
+          updateTab(currentId, { desktop: !current.desktop })
+          setNotice({ text: current.desktop ? 'Showing the mobile site' : 'Showing the desktop site' })
+        }}
       />
 
       {tabsOpen && (
         <TabCarousel
-          tabs={tabs}
+          // Switching between tabs and private tabs starts the row afresh.
+          key={browsingPrivate ? 'private' : 'tabs'}
+          tabs={tabs.filter(t => !!t.private === browsingPrivate)}
+          isPrivate={browsingPrivate}
+          onSwitch={setBrowsingPrivate}
+          onReopen={() => {
+            fadeOutTabs()
+            reopen()
+          }}
           currentId={currentId}
           hiddenIds={hiddenCards}
           appear={tabsAppear}
@@ -396,11 +552,11 @@ export const BrowserScreen = () => {
           onSelect={openFromCard}
           onClose={closeTab}
           onCloseAll={() => {
-            closeAll()
+            closeAll(browsingPrivate)
             fadeOutTabs()
           }}
           onNewTab={() => {
-            openTab()
+            openTab(null, { private: browsingPrivate })
             fadeOutTabs()
             search('')
           }}
@@ -416,7 +572,19 @@ export const BrowserScreen = () => {
         initial={searchFrom}
         onGo={url => web.current?.load(url)}
         onClose={() => setSearching(false)}
+        isPrivate={isPrivate}
       />
+
+      <HistorySheet
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        onOpen={url => web.current?.load(url)}
+        onReopen={visit => {
+          snapshot()
+          openTab(visit.url, { title: visit.title })
+        }}
+      />
+      <ReaderView article={article} onClose={() => setArticle(null)} />
 
       {/* The flying tab pictures, above everything else. */}
       {shrink.element}
