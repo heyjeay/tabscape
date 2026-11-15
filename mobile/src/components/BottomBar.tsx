@@ -14,8 +14,8 @@ import { TabPicture } from './TabPicture'
 interface Props {
   tab: Tab
   /**
-   * The tab button is a deck, like Arc's: its front card is the tab you were on last (the one
-   * you've just left), and behind it another. Without them it shows this tab.
+   * The tab button is a deck, like Arc's: its front card is the tab before this one, and behind
+   * it the one before that (see TabSwipe). Without them it shows this tab.
    */
   front?: Tab
   behind?: Tab

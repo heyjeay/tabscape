@@ -121,15 +121,10 @@ export const BrowserScreen = () => {
   // The tabs with live pages: this one, its neighbours in the swipe row, then the recent ones.
   const groupAt = group.indexOf(current)
   const neighbours = [group[groupAt - 1], group[groupAt + 1]].filter(Boolean).map(t => t.id)
-  // The tab button is a deck, like Arc's: the tab you were on last at the front, the one before behind.
-  const lastOn = recent.current
-    .map(id => tabs.find(t => t.id === id))
-    .filter((t): t is Tab => !!t && t.id !== currentId && !!t.private === isPrivate)
-  const fallback = [group[groupAt - 1], group[groupAt + 1]]
-  const deckFor = (from: number) => {
-    const front = lastOn[from] ?? fallback.find(Boolean)
-    return { front, behind: lastOn[from + 1] ?? fallback.find(t => t && t !== front) }
-  }
+  // The tab button is a deck, like Arc's, of the tabs before this one: the one just before it in
+  // front, the one before that behind. Swiping left takes the front card back out (so you can walk
+  // back along all your tabs), and swiping right puts this page onto it.
+  const deckFor = () => ({ front: group[groupAt - 1], behind: group[groupAt - 2] })
   const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
@@ -400,8 +395,8 @@ export const BrowserScreen = () => {
     current,
     measureDeck: () => measure(stack),
     next: group[groupAt + 1],
-    // Back to the tab in the tab button, so the card that comes out of it is the one you saw there.
-    back: deckFor(0).front,
+    // Back to the tab before this one: the tab button's front card, so the card that comes out of it is the one you saw there.
+    back: deckFor().front,
     // A fresh picture of the page for the card that flies into the tab button, taken as soon as a
     // finger is on the bar so it's ready in time.
     onTouch: () => snapshot(),
@@ -416,8 +411,8 @@ export const BrowserScreen = () => {
     }
   })
   // While a card is in the air, the tab button keeps the cards it had when you let go, until it lands.
-  const shownDeck = useRef(deckFor(0))
-  if (swipe.deck === 'live' || swipe.deck === 'landed') shownDeck.current = deckFor(0)
+  const shownDeck = useRef(deckFor())
+  if (swipe.deck === 'live' || swipe.deck === 'landed') shownDeck.current = deckFor()
   const deck = shownDeck.current
 
   /** Holding +: the tab you closed last comes back. */

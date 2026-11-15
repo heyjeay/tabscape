@@ -27,7 +27,7 @@ interface Options {
   current: Tab
   /** Swiping right goes on to the next tab along… */
   next?: Tab
-  /** …and swiping left goes back to the tab in the tab button (the one you were on last). */
+  /** …and swiping left goes back to the tab in the tab button (the tab before this one). */
   back?: Tab
   /** Where the tab button's front card is, on screen. */
   measureDeck: () => Promise<Rect | null>
@@ -83,7 +83,7 @@ const place = (card: CardMotion, to: Record<keyof CardMotion, number>) =>
 
 /**
  * Swiping along the bar to change tabs, as Arc Search does it (measured frame by frame from a
- * recording of it). The tab button is a deck: its front card is the tab you were on last.
+ * recording of it). The tab button is a deck: its front card is the tab before this one, and behind it the one before that.
  *
  * While you drag, the page follows your finger, full size, over the dark behind it.
  *
