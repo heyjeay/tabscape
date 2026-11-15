@@ -114,6 +114,46 @@
   background: var(--tile-gradient);
 }
 
+/*
+ * The glass over every tile, as iOS 26's icons have it: a rim that catches the light (bright at
+ * the top left, fading round the sides, a glint at the bottom right), a soft sheen across the top
+ * of the face, and a little depth at its lower edge. Drawn once, over the face; nothing live (no
+ * backdrop blur), so it costs the phone nothing as the background moves.
+ */
+.in-app .tl-tile {
+  box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.7), 0 3px 6px -2px rgba(0, 0, 0, 0.3) !important;
+}
+.in-app .tl-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(150deg,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.28) 22%,
+    rgba(255, 255, 255, 0.06) 48%,
+    rgba(255, 255, 255, 0.04) 70%,
+    rgba(255, 255, 255, 0.4) 100%);
+  /* Only the ring: the gradient shows in the padding, not over the face. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+.in-app .tl-tile-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(120% 70% at 30% -8%, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(0, 0, 0, 0.12) 100%);
+  box-shadow: inset 0 -6px 12px -8px rgba(0, 0, 0, 0.35), inset 0 2px 3px -2px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+
 /* ---- Looks (the app's Settings → Start Page Icons), as the iPhone's home screen has them ---- */
 
 /* Dark: each icon on a dark face, a little dimmed; letters in their section's colours. */
@@ -124,8 +164,11 @@
 .in-app[data-tile-look='dark'] .tl-tile-letter .tl-tile-face {
   filter: none;
 }
-.in-app[data-tile-look='dark'] .tl-link .tl-icon {
-  box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+.in-app[data-tile-look='dark'] .tl-tile::after {
+  opacity: 0.6;
+}
+.in-app[data-tile-look='dark'] .tl-tile-face::after {
+  opacity: 0.5;
 }
 
 /*
@@ -133,8 +176,17 @@
  * live blur behind every tile, over a moving background, would keep the phone's GPU busy.
  */
 .in-app[data-tile-look='clear'] .tl-link .tl-icon {
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08) 55%, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.55) !important;
+}
+.in-app[data-tile-look='clear'] .tl-tile::after {
+  padding: 2px;
+  background: linear-gradient(150deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.4) 25%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.1) 70%,
+    rgba(255, 255, 255, 0.6) 100%);
 }
 .in-app[data-tile-look='clear'] .tl-tile-face {
   background: transparent;
@@ -233,7 +285,7 @@
 .in-app .tl-link[data-hover]:active .tl-icon {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--accent) 75%, transparent),
-    0 10px 26px -6px var(--accent2);
+    0 10px 26px -6px var(--accent2) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
