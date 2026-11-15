@@ -37,6 +37,12 @@
           "backgroundColor": "#14141c"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e0bef497-1c66-47fc-adb9-a62379977541"
+      }
+    },
+    "owner": "heyjeay"
   }
 }
