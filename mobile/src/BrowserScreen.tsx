@@ -31,7 +31,7 @@ import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
-import { hasNativeExtras, setBlocking } from '../modules/tabscape-native'
+import { hasNativeExtras, setBlocking, setVisiblePages } from '../modules/tabscape-native'
 import { loadSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs, type Tab } from './useTabs'
@@ -129,6 +129,13 @@ export const BrowserScreen = () => {
   const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
+  // Only the page showing and the ones a swipe lands on keep running; the other loaded pages are
+  // marked hidden natively, so WebKit slows their timers and stops their animations.
+  const running = [currentId, ...neighbours].join(',')
+  useEffect(() => {
+    setVisiblePages(running.split(','))
+  }, [running])
+
   // A page you've left stops playing.
   const shownBefore = useRef(currentId)
   useEffect(() => {
@@ -204,6 +211,7 @@ export const BrowserScreen = () => {
   }, [refreshing])
 
   const onScroll = (y: number, contentHeight: number, viewHeight: number) => {
+    pictureStale.current = true
     feelPull(y)
     const moved = y - lastY.current
     lastY.current = y
@@ -229,8 +237,20 @@ export const BrowserScreen = () => {
     return () => clearTimeout(timer)
   }, [notice, noticeSlide])
 
+  /**
+   * The page showing has changed since its picture was taken (it loaded, scrolled, or it's a
+   * different tab now), so its picture needs taking again; otherwise the picture there will do.
+   */
+  const pictureStale = useRef(true)
+  /** The tab the last picture was of: a different tab showing now needs its own. */
+  const pictureOf = useRef<string | null>(null)
+
   /** A small picture of the page as it is now, for the tab button and the tab browser. */
   const snapshot = async (id = currentId) => {
+    if (id === currentIdRef.current) {
+      pictureStale.current = false
+      pictureOf.current = id
+    }
     try {
       const uri = await captureRef(page, { format: 'jpg', quality: 0.7, result: 'tmpfile', width: 360 })
       updateTab(id, { thumbnail: uri })
@@ -257,11 +277,15 @@ export const BrowserScreen = () => {
       if (state.loading) reloadSeen.current = true
       else if (reloadSeen.current) setRefreshing(false)
     }
+    pictureStale.current = true
     // A picture once it's drawn. A page reports several times as it finishes, so only the last
     // of those takes one; tied to this tab, in case another is showing by then.
     clearTimeout(pictureTimer.current)
     if (!state.loading) pictureTimer.current = setTimeout(() => id === currentIdRef.current && snapshot(id), 400)
   }
+  /** A picture of the page showing, only if it has changed since the last one. */
+  const freshPicture = () =>
+    pictureStale.current || pictureOf.current !== currentIdRef.current ? snapshot() : Promise.resolve()
   const pictureTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(pictureTimer.current), [])
 
@@ -410,7 +434,7 @@ export const BrowserScreen = () => {
     back: deckFor().front,
     // A fresh picture of the page for the card that flies into the tab button, taken as soon as a
     // finger is on the bar so it's ready in time.
-    onTouch: () => snapshot(),
+    onTouch: () => freshPicture(),
     onStart: () => showBar(true),
     onSwitch: tab => {
       if (!liveIds.current.includes(tab.id) && tab.url && tab.thumbnail) {
@@ -526,7 +550,7 @@ export const BrowserScreen = () => {
   /** Opens the tab browser: this tab's picture grows out of the tab button into the middle card. */
   const openTabs = async () => {
     showBar(true)
-    await snapshot()
+    await freshPicture()
     picking.current = false
     setBrowsingPrivate(isPrivate)
     tabsAppear.setValue(0)
@@ -592,6 +616,8 @@ export const BrowserScreen = () => {
           {restored && live.map(tab => (
             <View
               key={tab.id}
+              // How the native side tells which tab's page is which (to slow down the ones out of sight).
+              testID={`tabscape-page:${tab.id}`}
               // Always a real view of its own (never folded into its parent), so showing and
               // hiding it never moves the page inside, which would load it again.
               collapsable={false}

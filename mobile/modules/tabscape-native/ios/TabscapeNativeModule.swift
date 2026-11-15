@@ -5,6 +5,8 @@ import WebKit
 
 /**
  * Native extras for Tabscape that Expo Go can't do (they're only in Tabscape's own builds):
+ * - Pages kept loaded for other tabs, out of sight, are marked hidden, so WebKit slows their
+ *   timers and stops their animations, as Safari does for tabs in the background.
  * - Swipes along the bottom edge go to the app first, so swiping the bar changes tabs instead of
  *   iOS switching apps. A second swipe straight after still switches apps, as iOS always allows.
  * - Ad and tracker blocking in its pages, with WebKit's own content blocker (as Safari's
@@ -25,6 +27,13 @@ public class TabscapeNativeModule: Module {
     Function("setBlocking") { (on: Bool) in
       DispatchQueue.main.async {
         ContentBlocker.shared.setEnabled(on)
+      }
+    }
+
+    /// Which tabs' pages may keep running (the one showing, and the ones a swipe lands on); the rest are hidden from WebKit.
+    Function("setVisiblePages") { (ids: [String]) in
+      DispatchQueue.main.async {
+        PageVisibility.shared.show(Set(ids))
       }
     }
 
@@ -166,7 +175,11 @@ final class ContentBlocker {
       pages.add(page)
     }
     apply(to: page)
+    PageVisibility.shared.apply(to: page)
   }
+
+  /// Every page there is.
+  var allPages: [WKWebView] { pages.allObjects }
 
   private func apply(to page: WKWebView) {
     guard let list else { return }
@@ -195,5 +208,43 @@ final class ContentBlocker {
     if !class_addMethod(WKWebView.self, selector, implementation, method_getTypeEncoding(method)) {
       method_setImplementation(method, implementation)
     }
+  }
+}
+
+/**
+ * Which pages WebKit should treat as on screen. The app keeps several tabs' pages loaded, out
+ * of sight behind the one showing, so going back to them is instant; but WebKit can't tell
+ * they're out of sight, so their animations and timers would carry on at full speed, costing
+ * battery. Marked hidden, they're slowed down as background tabs are in Safari. Each page is
+ * found by the tab it belongs to: the view around it says which (testID "tabscape-page:<id>").
+ */
+final class PageVisibility {
+  static let shared = PageVisibility()
+  private static let prefix = "tabscape-page:"
+  /** The tabs whose pages may run; nil until the app first says (then all may). */
+  private var visible: Set<String>?
+
+  func show(_ ids: Set<String>) {
+    visible = ids
+    ContentBlocker.shared.allPages.forEach { apply(to: $0) }
+  }
+
+  func apply(to page: WKWebView) {
+    guard let visible, let id = tabId(of: page) else { return }
+    let hide = !visible.contains(id)
+    if page.isHidden != hide {
+      page.isHidden = hide
+    }
+  }
+
+  private func tabId(of page: UIView) -> String? {
+    var view = page.superview
+    while let current = view {
+      if let label = current.accessibilityIdentifier, label.hasPrefix(Self.prefix) {
+        return String(label.dropFirst(Self.prefix.count))
+      }
+      view = current.superview
+    }
+    return nil
   }
 }

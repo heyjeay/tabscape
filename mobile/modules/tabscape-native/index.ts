@@ -9,6 +9,7 @@ import { requireOptionalNativeModule } from 'expo'
  */
 interface TabscapeNative {
   setBlocking(on: boolean): void
+  setVisiblePages(ids: string[]): void
   blockedNetworkCount(): number
 }
 
@@ -22,3 +23,10 @@ export const setBlocking = (on: boolean) => native?.setBlocking(on)
 
 /** How many ad and tracking networks are blocked (0 where blocking isn't available). */
 export const blockedNetworkCount = () => native?.blockedNetworkCount() ?? 0
+
+/**
+ * Which tabs' pages may keep running: the one showing and the ones a swipe lands on. The other
+ * pages kept loaded (out of sight) are marked hidden, so WebKit slows them down. Each page's
+ * view must carry testID "tabscape-page:<tab id>" for it to be found.
+ */
+export const setVisiblePages = (ids: string[]) => native?.setVisiblePages(ids)
