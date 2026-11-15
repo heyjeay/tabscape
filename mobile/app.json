@@ -18,6 +18,9 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "Tabscape opens pages and shows site icons from servers on your own network, like a home server or a game server's panel."
+      },
+      "runtimeVersion": {
+        "policy": "fingerprint"
       }
     },
     "android": {
@@ -49,6 +52,9 @@
         "projectId": "e0bef497-1c66-47fc-adb9-a62379977541"
       }
     },
-    "owner": "heyjeay"
+    "owner": "heyjeay",
+    "updates": {
+      "url": "https://u.expo.dev/e0bef497-1c66-47fc-adb9-a62379977541"
+    }
   }
 }

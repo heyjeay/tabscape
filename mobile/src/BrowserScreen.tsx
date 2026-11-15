@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
-  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Linking, Platform, Share, StyleSheet, Text, View, useWindowDimensions
+  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Linking, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
@@ -36,6 +36,7 @@ import { hasNativeExtras, setBlocking, setVisiblePages } from '../modules/tabsca
 import { loadSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs, type Tab } from './useTabs'
+import { restartIntoUpdate, useAppUpdates } from './lib/updates'
 
 /** Pull-to-refresh steps: past each distance (points), a tap, getting stronger. */
 const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
@@ -117,7 +118,10 @@ export const BrowserScreen = () => {
   const [searchFrom, setSearchFrom] = useState('')
   const [finding, setFinding] = useState(false)
   const [notFound, setNotFound] = useState(false)
-  const [notice, setNotice] = useState<{ text: string; info?: boolean } | null>(null)
+  /** A short message over the bar; one with an action can be tapped, and stays a while longer. */
+  const [notice, setNotice] = useState<{ text: string; info?: boolean; action?: () => void } | null>(null)
+  // A new version of the app arrived over the air: a tap restarts into it (or it opens next time).
+  useAppUpdates(() => setNotice({ text: 'Tabscape updated. Tap to restart', info: true, action: restartIntoUpdate }))
   const [showHistory, setShowHistory] = useState(false)
   /** Which list History opens on. */
   const [historyOn, setHistoryOn] = useState<HistoryKind>('history')
@@ -257,7 +261,7 @@ export const BrowserScreen = () => {
     Animated.spring(noticeSlide, { toValue: 1, useNativeDriver: true }).start()
     const timer = setTimeout(() => {
       Animated.timing(noticeSlide, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setNotice(null))
-    }, 2200)
+    }, notice.action ? 8000 : 2200)
     return () => clearTimeout(timer)
   }, [notice, noticeSlide])
 
@@ -762,20 +766,22 @@ export const BrowserScreen = () => {
 
       {notice && (
         <Animated.View
-          pointerEvents="none"
+          pointerEvents={notice.action ? 'box-none' : 'none'}
           style={[styles.notice, {
             bottom: barRoom + 8,
             transform: [{ translateY: noticeSlide.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) }]
           }]}
         >
-          <Glass style={styles.noticePill}>
-            <Icon
-              sf={notice.info ? 'info.circle.fill' : 'checkmark.circle.fill'}
-              fallback={notice.info ? 'information-circle' : 'checkmark-circle'}
-              size={20}
-            />
-            <Text style={styles.noticeText} numberOfLines={1}>{notice.text}</Text>
-          </Glass>
+          <Pressable disabled={!notice.action} onPress={notice.action} accessibilityRole={notice.action ? 'button' : undefined}>
+            <Glass style={styles.noticePill}>
+              <Icon
+                sf={notice.action ? 'arrow.clockwise.circle.fill' : notice.info ? 'info.circle.fill' : 'checkmark.circle.fill'}
+                fallback={notice.action ? 'refresh-circle' : notice.info ? 'information-circle' : 'checkmark-circle'}
+                size={20}
+              />
+              <Text style={styles.noticeText} numberOfLines={1}>{notice.text}</Text>
+            </Glass>
+          </Pressable>
         </Animated.View>
       )}
 
