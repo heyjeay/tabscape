@@ -5,6 +5,7 @@ import type { SFSymbol } from 'expo-symbols'
 import type { Ionicons } from '@expo/vector-icons'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { ActionSheetIOS, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { blockedNetworkCount, hasNativeExtras, setBlocking } from '../../modules/tabscape-native'
 import { colors, links } from '../config'
 import { ENGINES, engineOf, type EngineId } from '../lib/engines'
 import { clearVisits, clearVisitsSince } from '../lib/history'
@@ -29,6 +30,8 @@ interface Props {
   /** Sites with their own text size (percent, by host), and putting one (or all, with null) back to normal. */
   textSizes: Record<string, number>
   onResetTextSize: (host: string | null) => void
+  /** Ad and tracker blocking was switched on or off: the page showing loads again to match. */
+  onBlockingChanged: () => void
 }
 
 type Fallback = keyof typeof Ionicons.glyphMap
@@ -228,6 +231,24 @@ export const SettingsSheet = (props: Props) => {
                 note={`From ${engine.name} as you type, so your typing goes to ${engine.name} before you search.`}
                 toggle={settings?.suggestions ?? true}
                 onToggle={suggestions => change({ suggestions })}
+              />
+            </Group>
+
+            <Group>
+              <Row
+                sf="shield.lefthalf.filled"
+                fallback="shield-half-outline"
+                color="#30b0c7"
+                title="Block Ads and Trackers"
+                note={hasNativeExtras
+                  ? `${blockedNetworkCount()} well-known ad and tracking networks aren't loaded by the sites you visit.`
+                  : 'Works in the Tabscape app from TestFlight, not in Expo Go.'}
+                toggle={settings?.blockTrackers ?? true}
+                onToggle={blockTrackers => {
+                  change({ blockTrackers })
+                  setBlocking(blockTrackers)
+                  props.onBlockingChanged()
+                }}
               />
             </Group>
 

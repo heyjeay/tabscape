@@ -8,6 +8,8 @@ export interface BrowserSettings {
   searchEngine: EngineId
   /** A new tab opens with the keyboard up, ready to search. */
   autoKeyboard: boolean
+  /** Ad and tracking networks aren't loaded (only in Tabscape's own builds; see modules/tabscape-native). */
+  blockTrackers: boolean
   /** Tabs not opened for this many hours are tidied away into the archive, like Arc. 0 is never. */
   archiveAfter: number
   /** Reader text size (points), and whether it's in a book typeface or the system one. */
@@ -17,7 +19,7 @@ export interface BrowserSettings {
 
 const KEY = 'tabscape.settings'
 const DEFAULTS: BrowserSettings = {
-  suggestions: true, searchEngine: 'google', autoKeyboard: true, archiveAfter: 24, readerSize: 19, readerSerif: true
+  suggestions: true, searchEngine: 'google', autoKeyboard: true, blockTrackers: true, archiveAfter: 24, readerSize: 19, readerSerif: true
 }
 
 /** The choices for tidying away tabs, in hours. */

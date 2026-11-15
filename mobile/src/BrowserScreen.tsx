@@ -30,6 +30,7 @@ import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
 } from './lib/savedPages'
+import { hasNativeExtras, setBlocking } from '../modules/tabscape-native'
 import { loadSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
 import { useTabs, type Tab } from './useTabs'
@@ -393,7 +394,9 @@ export const BrowserScreen = () => {
   const swipe = useTabSwipe({
     width,
     height,
-    bottomInset: insets.bottom,
+    // In Tabscape's own build, iOS hands swipes along the very bottom to the app first (see
+    // modules/tabscape-native), so they can change tabs too; in Expo Go that strip is left to iOS.
+    bottomInset: hasNativeExtras ? 0 : insets.bottom,
     current,
     measureDeck: () => measure(stack),
     next: group[groupAt + 1],
@@ -433,6 +436,11 @@ export const BrowserScreen = () => {
   }
 
   // Tabs not opened in a while are tidied away (as the app opens, and each time it comes back).
+  // Ad and tracker blocking, as last set (it's on unless switched off in Settings).
+  useEffect(() => {
+    loadSettings().then(settings => setBlocking(settings.blockTrackers))
+  }, [])
+
   const tidyRef = useRef(async () => {})
   tidyRef.current = async () => {
     const { archiveAfter } = await loadSettings()
@@ -762,6 +770,7 @@ export const BrowserScreen = () => {
           setShowSettings(false)
         }}
         onExportTabs={exportTabs}
+        onBlockingChanged={() => web.current?.reload()}
         textSizes={savedTextSizes}
         onResetTextSize={host => {
           resetSize(host)
