@@ -521,7 +521,13 @@ export const BrowserScreen = () => {
           {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first.
               The live pages are all here; only the one showing is drawn. */}
           {restored && live.map(tab => (
-            <View key={tab.id} style={[StyleSheet.absoluteFill, tab.id !== currentId && styles.hidden]}>
+            <View
+              key={tab.id}
+              style={[StyleSheet.absoluteFill, tab.id !== currentId && styles.hidden]}
+              pointerEvents={tab.id === currentId ? 'auto' : 'none'}
+              accessibilityElementsHidden={tab.id !== currentId}
+              importantForAccessibility={tab.id === currentId ? 'auto' : 'no-hide-descendants'}
+            >
               <TabWebView
                 ref={handle => {
                   if (handle) webs.set(tab.id, handle)
@@ -730,7 +736,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   page: { flex: 1, backgroundColor: '#0c0c12' },
   live: { flex: 1, backgroundColor: colors.background },
-  hidden: { display: 'none' },
+  // Not display: 'none': the new React Native architecture takes such views away altogether,
+  // which throws the page away and loads it again. Invisible and behind, it stays as it was.
+  hidden: { opacity: 0, zIndex: -1 },
   card: { borderRadius: SWIPE_RADIUS, overflow: 'hidden' },
   notice: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   noticePill: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 13 },
