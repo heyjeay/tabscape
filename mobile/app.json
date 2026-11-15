@@ -9,7 +9,10 @@
     "backgroundColor": "#14141c",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.github.heyjeay.tabscape"
+      "bundleIdentifier": "io.github.heyjeay.tabscape",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "io.github.heyjeay.tabscape",
