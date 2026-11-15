@@ -26,6 +26,7 @@ import { colors, log } from './config'
 import { hostOf } from './lib/address'
 import { parseColor, usableAccent } from './lib/color'
 import { recordVisit } from './lib/history'
+import { keepPicture } from './lib/pictures'
 import { iconFor, iconKey, loadSavedIcons, onIcon } from './lib/icons'
 import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
@@ -258,8 +259,10 @@ export const BrowserScreen = () => {
       pictureOf.current = id
     }
     try {
-      const uri = await captureRef(page, { format: 'jpg', quality: 0.7, result: 'tmpfile', width: 360 })
-      updateTab(id, { thumbnail: uri })
+      const taken = await captureRef(page, { format: 'jpg', quality: 0.7, result: 'tmpfile', width: 360 })
+      // Kept with the app's documents so it lasts between launches; a private tab's stays temporary.
+      const isPrivateTab = !!tabs.find(t => t.id === id)?.private
+      updateTab(id, { thumbnail: isPrivateTab ? taken : await keepPicture(taken, id) })
     } catch (e) {
       log("couldn't take a picture of the tab", e)
     }

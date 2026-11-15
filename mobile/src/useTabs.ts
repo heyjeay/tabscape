@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { log } from './config'
 import type { Rgb } from './lib/color'
 import { addArchived, addClosed, takeClosed, type Visit } from './lib/history'
+import { pictureFromLastLaunch, tidyPictures } from './lib/pictures'
 import { keys, load, save } from './lib/storage'
 
 /** One open tab. A null url is the Tabscape start page. */
@@ -10,7 +11,7 @@ export interface Tab {
   id: string
   url: string | null
   title: string
-  /** A small picture of the page, for the tab button and the carousel (a temporary file). */
+  /** A small picture of the page, for the tab button and the carousel (kept between launches: lib/pictures). */
   thumbnail?: string
   /** The site's accent colour, which tints the bar like Arc's. */
   accent?: Rgb
@@ -85,13 +86,15 @@ export const useTabs = () => {
   const currentRef = useRef(currentId)
   currentRef.current = currentId
 
-  // Bring back last launch's tabs. Pictures are temporary files that may be gone, so they're dropped.
+  // Bring back last launch's tabs, with their pictures (kept in the app's documents: lib/pictures).
   // Tabs from before tabs had a time are taken as seen now, so none is tidied away at once.
   useEffect(() => {
     load<Saved | null>(keys.tabs, null).then(saved => {
       if (saved?.tabs?.length) {
         const now = Date.now()
-        setTabs(saved.tabs.map(t => ({ ...t, thumbnail: undefined, lastSeen: t.lastSeen ?? now })))
+        const back = saved.tabs.map(t => ({ ...t, thumbnail: pictureFromLastLaunch(t.thumbnail), lastSeen: t.lastSeen ?? now }))
+        tidyPictures(back.map(t => t.thumbnail))
+        setTabs(back)
         setCurrentId(saved.tabs.some(t => t.id === saved.currentId) ? saved.currentId : saved.tabs[0].id)
         log('restored', saved.tabs.length, 'tabs')
       }
@@ -101,11 +104,11 @@ export const useTabs = () => {
   }, [])
 
   // Saved once things settle, not on every title and picture change while a page loads.
-  // Pictures aren't kept between launches, so they aren't written; private tabs aren't kept at all.
+  // Private tabs aren't kept at all.
   useEffect(() => {
     if (!ready.current) return
     const timer = setTimeout(() => {
-      const kept = tabs.filter(t => !t.private).map(({ thumbnail, ...rest }) => rest)
+      const kept = tabs.filter(t => !t.private)
       save(keys.tabs, { tabs: kept, currentId: kept.some(t => t.id === currentId) ? currentId : (kept[0]?.id ?? '') } satisfies Saved)
     }, SAVE_AFTER)
     return () => clearTimeout(timer)
