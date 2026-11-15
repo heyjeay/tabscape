@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import { useStartpage } from '@/composables/useStartpage'
 import { useFavicons } from '@/composables/useFavicons'
 import { faviconUrl } from '@/lib/favicons'
@@ -52,6 +52,29 @@ const src = computed(() => {
   return null
 })
 
+/**
+ * An icon still loading shows the letter meanwhile, then comes in from a blur to sharp. One
+ * that's there at once (saved, or in the browser's memory) just shows: no letter flashing up
+ * first, and no blur every time a page opens.
+ */
+const image = ref<HTMLImageElement | null>(null)
+const loading = ref(false)
+const reveal = ref(false)
+watch(src, async now => {
+  reveal.value = false
+  loading.value = false
+  if (!now) return
+  // Looked at before the page is drawn, so a ready icon never shows the letter first.
+  await nextTick()
+  const el = image.value
+  if (el && src.value === now && !(el.complete && el.naturalWidth)) loading.value = true
+}, { immediate: true })
+const onLoad = () => {
+  if (!loading.value) return
+  loading.value = false
+  reveal.value = true
+}
+
 const letter = computed(() => {
   const name = props.link.name.trim() || hostOf(props.link.url) || '?'
   return name.charAt(0).toUpperCase()
@@ -61,17 +84,52 @@ const letter = computed(() => {
 <template>
   <img
     v-if="src"
+    v-show="!loading"
+    ref="image"
     :src="src"
     alt=""
     class="tl-icon shrink-0 rounded-[4px] object-cover"
-    :class="{ 'tl-icon-small': small }"
+    :class="{ 'tl-icon-small': small, 'tl-icon-reveal': reveal }"
     :style="{ width: `${size}px`, height: `${size}px` }"
+    @load="onLoad"
     @error="onError"
   >
   <span
-    v-else
+    v-if="!src || loading"
     aria-hidden="true"
     class="tl-icon grid shrink-0 select-none place-items-center rounded-[5px] font-bold leading-none text-white"
     :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.58)}px`, backgroundImage: gradientCss(gradient) }"
   >{{ letter }}</span>
 </template>
+
+<style>
+/* An icon that's just arrived comes into focus: from a soft, bright blur to sharp. */
+.tl-icon-reveal {
+  animation: tl-icon-reveal 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+@keyframes tl-icon-reveal {
+  from {
+    opacity: 0.15;
+    filter: blur(12px) saturate(1.6) brightness(1.15);
+    transform: scale(1.12);
+  }
+  45% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0) saturate(1) brightness(1);
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-icon-reveal {
+    animation: tl-icon-fade 0.25s ease backwards;
+  }
+  @keyframes tl-icon-fade {
+    from {
+      opacity: 0;
+    }
+  }
+}
+</style>

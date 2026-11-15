@@ -50,7 +50,7 @@ const KEY = 'tabscape.icons.3'
 /** A site with no icon to be found is asked again after this long. */
 const RETRY_AFTER = 7 * 24 * 3600_000
 /** Icons fetched at once. */
-const AT_ONCE = 4
+const AT_ONCE = 6
 
 /** What's known for each site: the saved icon's file name (and how wide it is), or none found (and when that was). */
 type Entry = { file: string; width?: number } | { none: number }
@@ -142,11 +142,13 @@ const iconsNamedIn = (html: string, base: string) => {
 /** A web app manifest's icons, biggest first (they're often 192 or 512 pixels: the sharpest there is). */
 const manifestIcons = async (url: string) => {
   try {
-    const response = await fetchAsSafari(url, 'application/manifest+json,application/json;q=0.9,*/*;q=0.5')
-    const json = (await response.json()) as { icons?: { src?: string; sizes?: string; type?: string }[] }
+    const { json, base } = await fetchAsSafari(url, 'application/manifest+json,application/json;q=0.9,*/*;q=0.5', async response => ({
+      json: (await response.json()) as { icons?: { src?: string; sizes?: string; type?: string }[] },
+      base: response.url || url
+    }))
     return (json.icons ?? [])
       .filter(icon => icon.src && !/svg/i.test(`${icon.type ?? ''}${icon.src}`))
-      .map(icon => ({ href: absolute(icon.src!, response.url || url), size: Math.max(0, ...(icon.sizes ?? '').split(/\s+/).map(s => Number(s.split('x')[0]) || 0)) }))
+      .map(icon => ({ href: absolute(icon.src!, base), size: Math.max(0, ...(icon.sizes ?? '').split(/\s+/).map(s => Number(s.split('x')[0]) || 0)) }))
       .filter((icon): icon is { href: string; size: number } => !!icon.href)
       .sort((a, b) => b.size - a.size)
   } catch {
@@ -199,7 +201,19 @@ const AS_SAFARI = {
  * they're told they may, and it's PNG whose size is surest to be read.
  */
 const IMAGES = 'image/png,image/x-icon,image/jpeg;q=0.9,image/*;q=0.5'
-export const fetchAsSafari = (url: string, accept = AS_SAFARI.accept) => fetch(url, { headers: { ...AS_SAFARI, accept } })
+/**
+ * Fetches and reads a response, within a time limit (reading included): a server that's slow, or
+ * out of reach (one at home, while you're out), mustn't hold up every icon after it.
+ */
+export const fetchAsSafari = async <T>(url: string, accept: string, read: (response: Response) => Promise<T>, ms = 6000): Promise<T> => {
+  const stop = new AbortController()
+  const timer = setTimeout(() => stop.abort(), ms)
+  try {
+    return await read(await fetch(url, { headers: { ...AS_SAFARI, accept }, signal: stop.signal }))
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /** What kind of image the bytes are (going by the bytes, not what the server called them), or null if none it can show. */
 export const imageKind = (b: Uint8Array): string | null => {
@@ -223,10 +237,8 @@ const isSvg = (b: Uint8Array) => {
 /** Downloads an image, if it is one (not an error page), up to 1 MB, with how wide it really is. */
 const download = async (url: string): Promise<{ bytes: Uint8Array; ext: string; width: number } | null> => {
   try {
-    const response = await fetchAsSafari(url, IMAGES)
-    if (!response.ok) return null
-    const bytes = new Uint8Array(await response.arrayBuffer())
-    if (bytes.length < 64 || bytes.length > 1_000_000) return null
+    const bytes = await fetchAsSafari(url, IMAGES, async response => (response.ok ? new Uint8Array(await response.arrayBuffer()) : null), 5000)
+    if (!bytes || bytes.length < 64 || bytes.length > 1_000_000) return null
     const ext = imageKind(bytes)
     if (ext) return { bytes, ext, width: imageWidth(bytes) }
     // A drawn icon is sharp at any size: counted as just sharp, so a real home-screen icon still wins.
@@ -262,12 +274,15 @@ export const parentSite = (key: string) => {
 }
 
 /** Where the icons for a site might be, best first, from its homepage. */
+/** A site's homepage address, from its key. */
+const homeOf = (key: string) => (key.includes('://') ? `${key}/` : `https://${key}/`)
+
 const candidatesFor = async (key: string) => {
-  const home = key.includes('://') ? `${key}/` : `https://${key}/`
+  const home = homeOf(key)
   let named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], vector: [], manifest: null }
   try {
-    const response = await fetchAsSafari(home)
-    if (response.ok) named = iconsNamedIn((await response.text()).slice(0, 300_000), response.url || home)
+    named = await fetchAsSafari(home, AS_SAFARI.accept, async response =>
+      response.ok ? iconsNamedIn((await response.text()).slice(0, 300_000), response.url || home) : named)
   } catch {
     // No homepage to read: try the usual places.
   }
@@ -330,14 +345,35 @@ const iconService = (key: string) => `https://icons.duckduckgo.com/ip3/${key}.ic
 type Found = { bytes: Uint8Array; ext: string; width: number; url: string }
 
 /** The widest icon of these (up to `limit` downloads), stopping at the first sharp one; better than `best` or `best` itself. */
-const bestOf = async (candidates: string[], limit: number, best: Found | null = null): Promise<Found | null> => {
-  for (const url of [...new Set(candidates)].slice(0, limit)) {
-    const image = await download(url)
-    if (!image) continue
-    // A width it couldn't read is taken as middling: better than nothing, not as good as a known big one.
-    const width = image.width || 64
-    if (!best || width > best.width) best = { ...image, width, url }
-    if (width >= SHARP) break
+/** Downloads already started for one site (so none is fetched twice), by address. */
+type Downloads = Map<string, ReturnType<typeof download>>
+
+/** Icons downloaded side by side, a few at a time, rather than one after another. */
+const AT_A_TIME = 3
+
+const bestOf = async (candidates: string[], limit: number, best: Found | null = null, got: Downloads = new Map()): Promise<Found | null> => {
+  const urls = [...new Set(candidates)].slice(0, limit)
+  const get = (url: string) => {
+    let pending = got.get(url)
+    if (!pending) {
+      pending = download(url)
+      got.set(url, pending)
+    }
+    return pending
+  }
+  for (let i = 0; i < urls.length; i += AT_A_TIME) {
+    const batch = urls.slice(i, i + AT_A_TIME)
+    const images = await Promise.all(batch.map(get))
+    let sharp = false
+    for (let j = 0; j < batch.length; j += 1) {
+      const image = images[j]
+      if (!image) continue
+      // A width it couldn't read is taken as middling: better than nothing, not as good as a known big one.
+      const width = image.width || 64
+      if (!best || width > best.width) best = { ...image, width, url: batch[j] }
+      if (width >= SHARP) sharp = true
+    }
+    if (sharp) break
   }
   return best
 }
@@ -382,7 +418,11 @@ const find = async (key: string): Promise<string | null> => {
   // A server on your own network (or with a port) is only asked itself: it has no main site, and DuckDuckGo can't see it.
   const own = key.includes('://')
   const parent = own ? null : parentSite(key)
-  let best = await bestOf(await candidatesFor(key), TRIES)
+  // A head start: the usual home-screen icon is fetched while the homepage is read.
+  const got: Downloads = new Map()
+  const usual = `${homeOf(key)}apple-touch-icon.png`
+  got.set(usual, download(usual))
+  let best = await bestOf(await candidatesFor(key), TRIES, null, got)
   // Nothing on the subdomain: the site it belongs to (its icon is usually the same brand's).
   if (!best && parent) best = await bestOf(await candidatesFor(parent), TRIES)
   // Still nothing, or only a tiny one: DuckDuckGo's copy (the site's, or the one it belongs to).
