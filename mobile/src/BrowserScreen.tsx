@@ -27,7 +27,7 @@ import { hostOf } from './lib/address'
 import { parseColor, usableAccent } from './lib/color'
 import { recordVisit } from './lib/history'
 import { keepPicture } from './lib/pictures'
-import { iconFor, iconKey, iconsFromPage, loadSavedIcons, onIcon } from './lib/icons'
+import { iconFor, iconKey, iconsFromDesktop, iconsFromPage, loadSavedIcons, onIcon } from './lib/icons'
 import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
@@ -358,6 +358,11 @@ export const BrowserScreen = () => {
         })
       }
       log('start page asked for', data.hosts.length, 'icons;', Object.keys(icons).length, 'saved, e.g.', iconKey(String(data.hosts[0] ?? '')))
+      return
+    }
+    // Your computer's icons, which a start page took from sync (only a start page can hand them over).
+    if (data.type === 'desktopIcons' && data.sites && typeof data.sites === 'object') {
+      if (!tabs.find(t => t.id === id)?.url) iconsFromDesktop(data.sites as Record<string, unknown>)
       return
     }
     // A web page's icons (any tab's): the sharpest is kept for its site, if better than what's saved.

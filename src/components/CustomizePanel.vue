@@ -498,6 +498,11 @@ const version = __APP_VERSION__
                     {{ inApp ? 'Your links stay the same here and on your computer.' : 'Your links stay the same here and on your phone.' }}
                   </template>
                 </p>
+                <p v-if="state.relay.paired && !inApp && favicons.supported" class="text-xs leading-snug text-white/45">
+                  {{ favicons.enabled.value
+                    ? 'Your phone gets the site icons you see here too, for any site it has no sharper icon for.'
+                    : 'Turn on Use real site icons above, and your phone gets the icons you see here too.' }}
+                </p>
                 <div v-if="state.relay.backupAt" class="space-y-1.5 rounded-lg bg-amber-400/10 p-2.5 ring-1 ring-amber-300/30">
                   <p class="text-xs leading-snug text-amber-100/90">
                     Sync replaced the links that were here on {{ backupWhen }}. You can put them back (they then go to your other devices too).
@@ -522,7 +527,7 @@ const version = __APP_VERSION__
                 </template>
                 <template v-else>
                   <p class="text-xs leading-snug text-white/45">
-                    Keeps your links, pages and settings the same in the Tabscape iPhone app, in any browser.
+                    Keeps your links, pages, settings and icons the same in the Tabscape iPhone app, in any browser.
                     They're encrypted on your devices before they leave, so nobody else can read them, us included.
                   </p>
                   <div v-if="phoneCode" class="space-y-2 pt-1">

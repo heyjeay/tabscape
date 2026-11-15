@@ -18,7 +18,7 @@ import { load, save } from './storage'
  */
 export const iconKey = (host: string) => (host.includes('://') ? host.toLowerCase().replace(/\/+$/, '') : host.toLowerCase().replace(/^www\./, ''))
 
-/** Keep in step with iconSiteOf in the start page's src/lib/inApp.ts. */
+/** Keep in step with iconSiteOf in the start page's src/lib/iconSite.ts. */
 /** Hosts on your own network (an IP address, a name with no dots, .local…), often plain http. */
 const LOCAL_HOST = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-f:.]+\]|[^.]+|.+\.(local|lan|home|internal|localhost|test))$/i
 
@@ -455,6 +455,8 @@ const find = async (key: string): Promise<string | null> => {
     }
     return null
   }
+  // A better one came meanwhile (from your computer, or a page you opened): it stays.
+  if (widthOf(index[key]) >= best.width) return uriOf(index[key]) ?? null
   return keep(key, best)
 }
 
@@ -539,6 +541,39 @@ export const iconsFromPage = (pageUrl: string, links: { rel: string; href: strin
     next()
   })
 }
+
+/**
+ * Your computer's icons (through sync): Chrome's own copies of the sites' icons, by site. Each is
+ * kept where the phone has none, or only a smaller one: Chrome has icons the phone can't fetch
+ * (shops that turn away apps, servers only reachable from home).
+ */
+export const iconsFromDesktop = (sites: Record<string, unknown>) =>
+  ready.then(async () => {
+    let taken = 0
+    for (const [site, png] of Object.entries(sites).slice(0, 1000)) {
+      if (typeof png !== 'string' || png.length > 300_000) continue
+      const key = iconKey(site)
+      let bytes: Uint8Array
+      try {
+        bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0))
+      } catch {
+        continue
+      }
+      const ext = imageKind(bytes)
+      if (!ext || bytes.length < 64) continue
+      const width = imageWidth(bytes) || 32
+      if (width <= widthOf(index[key])) continue
+      try {
+        const uri = await keep(key, { bytes, ext, width, url: 'your computer' })
+        outOfReach.delete(key)
+        listeners.forEach(tell => tell(key, uri))
+        taken += 1
+      } catch (e) {
+        log("couldn't keep the computer's icon for", key, e)
+      }
+    }
+    log('took', taken, 'icons from the computer')
+  })
 
 /** A site's icon for a view: the saved file at once if there is one, fetched (and then shown) if not; a better one when it's found. */
 export const useIcon = (host: string | null) => {

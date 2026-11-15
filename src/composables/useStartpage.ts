@@ -2,9 +2,10 @@ import { reactive, watch } from 'vue'
 import { log } from '@/config'
 import { asList, onRemoteChange, pushSnapshot, readSnapshot, syncAvailable, SyncTooBig, type Snapshot } from '@/lib/sync'
 import {
-  isPaired, isPairingKey, joinPairing, leavePairing, pairingLink, pushRemote, readRemote, startPairing
+  isPaired, isPairingKey, joinPairing, leavePairing, pairingLink, pushIcons, pushRemote, readIcons, readRemote, startPairing
 } from '@/lib/relay'
-import { inApp } from '@/lib/inApp'
+import { collectIcons, fingerprint } from '@/lib/desktopIcons'
+import { handIconsToApp, inApp } from '@/lib/inApp'
 import { hostOf, nameFromAddress, pickTarget, sameAddress, type NewBookmark } from '@/lib/autosort'
 import {
   DEFAULT_SETTINGS, defaultPages, defaultSections, uid,
@@ -320,6 +321,64 @@ const relayReconcile = async () => {
     }
   } catch (e) {
     relayFailed(e)
+    return
+  }
+  await (inApp ? relayIconsPull() : relayIconsPush())
+}
+
+// ---- Icons, from the computer to the phone ----
+
+/** The fingerprint of the icons this computer last sent (with the pairing), so unchanged ones aren't sent again. */
+const ICONS_SENT_KEY = 'startpage_relay_icons_sent'
+/** How often the computer looks again at Chrome's icons when no link has changed (it learns them as you browse). */
+const ICONS_LOOK_EVERY_MS = 30 * 60_000
+let iconsBusy = false
+let iconsLookedAt = 0
+let iconsLinks = ''
+
+/**
+ * The computer: sends the icons it shows (Chrome's own, and images given by hand) for the phone,
+ * when links change or every half hour, and only if they're different from what it last sent.
+ */
+const relayIconsPush = async () => {
+  if (inApp || !state.relay.paired || iconsBusy) return
+  const links = state.sections.flatMap(s => s.links).map(l => ({ id: l.id, url: l.url }))
+  const linksNow = `${JSON.stringify(links)}|${Object.keys(state.icons).join(',')}`
+  if (linksNow === iconsLinks && Date.now() - iconsLookedAt < ICONS_LOOK_EVERY_MS) return
+  iconsBusy = true
+  try {
+    const shared = await collectIcons(links, JSON.parse(JSON.stringify(state.icons)))
+    const sent = fingerprint(`${pairingLink()}|${JSON.stringify(shared)}`)
+    if (getRaw(ICONS_SENT_KEY) !== sent) {
+      await pushIcons(shared)
+      setRaw(ICONS_SENT_KEY, sent)
+      log('relay: sent', Object.keys(shared.sites).length, 'site icons and', Object.keys(shared.own).length, 'own images')
+    }
+    iconsLinks = linksNow
+    iconsLookedAt = Date.now()
+  } catch (e) {
+    console.warn("[tabscape] Couldn't send the icons to the phone", e)
+  } finally {
+    iconsBusy = false
+  }
+}
+
+/**
+ * The phone: takes the computer's icons when they've changed. Images given to links by hand are
+ * used as they are; site icons go to the app, which keeps each where it's better than its own.
+ */
+const relayIconsPull = async (always = false) => {
+  if (!inApp || !state.relay.paired) return
+  try {
+    const shared = await readIcons(always)
+    if (!shared) return
+    const ids = new Set(state.sections.flatMap(s => s.links.map(l => l.id)))
+    for (const [id, image] of Object.entries(shared.own)) {
+      if (ids.has(id) && typeof image === 'string' && image.startsWith('data:image/') && state.icons[id] !== image) state.icons[id] = image
+    }
+    handIconsToApp(shared.sites)
+  } catch (e) {
+    console.warn("[tabscape] Couldn't take the computer's icons", e)
   }
 }
 
@@ -486,6 +545,7 @@ const connectPhone = async () => {
     }
     return null
   }
+  void relayIconsPush()
   return pairingLink()
 }
 
@@ -505,6 +565,7 @@ const joinGroup = async (secret: string) => {
     applyFromRelay(remote)
     state.relay.status = 'synced'
     state.relay.message = ''
+    void relayIconsPull(true)
     return true
   } catch (e) {
     leavePairing()

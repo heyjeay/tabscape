@@ -9,27 +9,8 @@ import { reactive } from 'vue'
 export const inApp = typeof window !== 'undefined' &&
   ('ReactNativeWebView' in window || (import.meta.env.DEV && new URLSearchParams(location.search).has('app')))
 
-/** Keep in step with iconSiteOf in the app's mobile/src/lib/icons.ts. */
-/** Hosts on your own network (an IP address, a name with no dots, .local…), often plain http. */
-const LOCAL_HOST = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-f:.]+\]|[^.]+|.+\.(local|lan|home|internal|localhost|test))$/i
-
-/**
- * What the app keeps a link's icon under. An ordinary site: its host, lower case, without "www."
- * A server with a port, or a plain-http one on your own network (a game server's panel, a NAS):
- * its whole origin, "http://192.168.1.5:40120", since that's the only place its icon is.
- */
-export const iconSiteOf = (url: string | null): string | null => {
-  if (!url) return null
-  try {
-    const u = new URL(url)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
-    const host = u.hostname.toLowerCase()
-    if (!host) return null
-    return u.port || (u.protocol === 'http:' && LOCAL_HOST.test(host)) ? u.origin.toLowerCase() : host.replace(/^www\./, '')
-  } catch {
-    return null
-  }
-}
+/** What a link's icon is kept under (in lib/iconSite, which the computer uses too, to share its icons). */
+export { iconSiteOf } from './iconSite'
 
 type AppWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -55,6 +36,11 @@ if (inApp) {
 const asked = new Set<string>()
 let waiting: string[] = []
 let timer: ReturnType<typeof setTimeout> | undefined
+
+/** Hands the app the computer's icons (from sync), to keep where they're better than its own. */
+export const handIconsToApp = (sites: Record<string, string>) => {
+  if (inApp && Object.keys(sites).length) appWindow.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'desktopIcons', sites }))
+}
 
 /** Asks the app for a site's icon (once; sites asked for together go in one message). */
 export const askAppForIcon = (host: string) => {

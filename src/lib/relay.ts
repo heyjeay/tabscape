@@ -22,7 +22,10 @@ const KEY = 'startpage_relay'
 
 interface Pairing {
   secret: string
+  /** The links' revision this device last saw. */
   rev: number
+  /** The icons' revision this device last saw. */
+  iconsRev: number
 }
 
 const utf8 = (text: string) => new TextEncoder().encode(text)
@@ -53,6 +56,8 @@ export const keysFor = (secretText: string) => {
   return {
     group: hex(derive(secret, 'group').slice(0, 16)),
     token: toBase64Url(derive(secret, 'write').slice(0, 32)),
+    iconsGroup: hex(derive(secret, 'icons-group').slice(0, 16)),
+    iconsToken: toBase64Url(derive(secret, 'icons-write').slice(0, 32)),
     key: derive(secret, 'key').slice(0, nacl.secretbox.keyLength)
   }
 }
@@ -72,7 +77,9 @@ export const open = (sealed: string, key: Uint8Array): unknown => {
 const readPairing = (): Pairing | null => {
   try {
     const value = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Pairing> | null
-    return value && typeof value.secret === 'string' && value.secret.length >= 32 ? { secret: value.secret, rev: Number(value.rev) || 0 } : null
+    return value && typeof value.secret === 'string' && value.secret.length >= 32
+      ? { secret: value.secret, rev: Number(value.rev) || 0, iconsRev: Number(value.iconsRev) || 0 }
+      : null
   } catch {
     return null
   }
@@ -97,13 +104,13 @@ export const pairingLink = () => {
 
 /** Starts a new group on this device (the computer showing the QR code). */
 export const startPairing = () => {
-  savePairing({ secret: toBase64Url(nacl.randomBytes(32)), rev: 0 })
+  savePairing({ secret: toBase64Url(nacl.randomBytes(32)), rev: 0, iconsRev: 0 })
 }
 
 /** Joins the group a QR code showed (on the phone). False if the secret isn't one. */
 export const joinPairing = (secret: string) => {
   if (!/^[A-Za-z0-9_-]{40,64}$/.test(secret)) return false
-  savePairing({ secret, rev: 0 })
+  savePairing({ secret, rev: 0, iconsRev: 0 })
   return true
 }
 
@@ -118,61 +125,117 @@ const url = (group: string) => `${RELAY_URL}/v1/g/${group}`
 export class RelayUnreachable extends Error {}
 
 /**
- * The group's copy, if there's a newer one than this device last saw (or `always`): the start
- * page as it was pushed, or null if there's nothing newer (or no group yet).
+ * The group's two copies at the relay: its links (pages, settings), which every device sends and
+ * takes; and its icons, which a computer sends from Chrome's own icon store for the phone, kept
+ * apart so they don't go with every edit. Each has its own address and write token.
  */
-export const readRemote = async (always = false): Promise<Snapshot | null> => {
+type Doc = 'links' | 'icons'
+
+const docOf = (pairing: Pairing, doc: Doc) => {
+  const keys = keysFor(pairing.secret)
+  return doc === 'links'
+    ? { group: keys.group, token: keys.token, key: keys.key, rev: pairing.rev, field: 'rev' as const }
+    : { group: keys.iconsGroup, token: keys.iconsToken, key: keys.key, rev: pairing.iconsRev, field: 'iconsRev' as const }
+}
+
+/**
+ * Notes a revision seen, on the pairing as it is now (another request may have noted one of the
+ * other copy's meanwhile); not if the pairing was left, or replaced, since this one began.
+ */
+const noteRevision = (secret: string, field: 'rev' | 'iconsRev', rev: number) => {
+  const now = readPairing()
+  if (now && now.secret === secret) savePairing({ ...now, [field]: rev })
+}
+
+/** A copy, if there's a newer one than this device last saw (or `always`); null if there's nothing newer (or nothing yet). */
+const readDoc = async (doc: Doc, always: boolean, valid: (value: unknown) => boolean): Promise<unknown> => {
   const pairing = readPairing()
   if (!pairing) return null
-  const { group, key } = keysFor(pairing.secret)
+  const d = docOf(pairing, doc)
   let response: Response
   try {
-    response = await fetch(always ? url(group) : `${url(group)}?since=${pairing.rev}`, { cache: 'no-store' })
+    response = await fetch(always ? url(d.group) : `${url(d.group)}?since=${d.rev}`, { cache: 'no-store' })
   } catch (e) {
     throw new RelayUnreachable(String(e))
   }
   if (response.status === 204 || response.status === 404) return null
   if (!response.ok) throw new RelayUnreachable(`relay answered ${response.status}`)
   const body = (await response.json()) as { rev: number; data: string }
-  const snapshot = open(body.data, key) as Snapshot | null
+  const value = open(body.data, d.key)
   // Can't be opened (not this group's key, or damaged): an error, never "nothing there", so
   // nothing is ever sent over a copy this device couldn't read.
-  if (!snapshot || !Array.isArray(snapshot.sections)) throw new RelayUnreachable("the group's copy couldn't be opened")
+  if (!value || !valid(value)) throw new RelayUnreachable(`the group's ${doc} couldn't be opened`)
   // Remember the revision now: what it holds is either taken in, or older than ours and about to be replaced.
-  savePairing({ ...pairing, rev: body.rev })
-  log('relay: read revision', body.rev)
-  return snapshot
+  noteRevision(pairing.secret, d.field, body.rev)
+  log('relay: read', doc, 'revision', body.rev)
+  return value
 }
 
 /**
  * Sends this device's copy. If another device wrote first, nothing is sent and its copy comes
- * back, for the caller to compare (take it if newer, or push again).
+ * back, for the caller to compare (take it if newer, or send again).
  */
-export const pushRemote = async (snapshot: Snapshot): Promise<{ newer: Snapshot | null }> => {
+const pushDoc = async (doc: Doc, value: unknown, valid: (value: unknown) => boolean): Promise<{ newer: unknown }> => {
   const pairing = readPairing()
   if (!pairing) return { newer: null }
-  const { group, token, key } = keysFor(pairing.secret)
+  const d = docOf(pairing, doc)
   let response: Response
   try {
-    response = await fetch(url(group), {
+    response = await fetch(url(d.group), {
       method: 'PUT',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ rev: pairing.rev, data: seal(snapshot, key) })
+      headers: { authorization: `Bearer ${d.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ rev: d.rev, data: seal(value, d.key) })
     })
   } catch (e) {
     throw new RelayUnreachable(String(e))
   }
   const body = (await response.json().catch(() => ({}))) as { rev?: number; data?: string }
   if (response.ok && typeof body.rev === 'number') {
-    savePairing({ ...pairing, rev: body.rev })
-    log('relay: pushed revision', body.rev)
+    noteRevision(pairing.secret, d.field, body.rev)
+    log('relay: pushed', doc, 'revision', body.rev)
     return { newer: null }
   }
   if (response.status === 409 && typeof body.rev === 'number' && body.data) {
-    const newer = open(body.data, key) as Snapshot | null
-    if (!newer || !Array.isArray(newer.sections)) throw new RelayUnreachable("the group's copy couldn't be opened")
-    savePairing({ ...pairing, rev: body.rev })
+    const newer = open(body.data, d.key)
+    if (!newer || !valid(newer)) throw new RelayUnreachable(`the group's ${doc} couldn't be opened`)
+    noteRevision(pairing.secret, d.field, body.rev)
     return { newer }
   }
   throw new RelayUnreachable(`relay answered ${response.status}`)
+}
+
+const isSnapshot = (value: unknown) => Array.isArray((value as Snapshot | null)?.sections)
+
+/**
+ * The group's copy of the links, if there's a newer one than this device last saw (or `always`):
+ * the start page as it was pushed, or null if there's nothing newer (or no group yet).
+ */
+export const readRemote = async (always = false) => (await readDoc('links', always, isSnapshot)) as Snapshot | null
+
+/** Sends this device's links. If another device wrote first, nothing is sent and its copy comes back. */
+export const pushRemote = async (snapshot: Snapshot) => (await pushDoc('links', snapshot, isSnapshot)) as { newer: Snapshot | null }
+
+/**
+ * A computer's site icons, for the phone: by site (see lib/iconSite), each a PNG (base64) from
+ * Chrome's own icon store; and the images given to links by hand, by link.
+ */
+export interface SharedIcons {
+  v: 1
+  sites: Record<string, string>
+  own: Record<string, string>
+}
+
+const isSharedIcons = (value: unknown) => {
+  const v = value as SharedIcons | null
+  return !!v && typeof v.sites === 'object' && v.sites !== null && typeof v.own === 'object' && v.own !== null
+}
+
+/** The computer's icons, if they've changed since this device last took them (or `always`). */
+export const readIcons = async (always = false) => (await readDoc('icons', always, isSharedIcons)) as SharedIcons | null
+
+/** Sends this computer's icons, in place of what's there (a computer's icons are the newest it knows). */
+export const pushIcons = async (icons: SharedIcons) => {
+  const { newer } = await pushDoc('icons', icons, isSharedIcons)
+  // Another computer sent its own first: ours go over them (now on top of the revision it made).
+  if (newer) await pushDoc('icons', icons, isSharedIcons)
 }
