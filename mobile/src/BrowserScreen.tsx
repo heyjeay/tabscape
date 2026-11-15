@@ -393,6 +393,7 @@ export const BrowserScreen = () => {
   const swipe = useTabSwipe({
     width,
     height,
+    bottomInset: insets.bottom,
     current,
     measureDeck: () => measure(stack),
     prev: group[groupAt - 1],

@@ -17,6 +17,11 @@ const DECK_WIDTH = 27
 interface Options {
   width: number
   height: number
+  /**
+   * The strip along the bottom of the screen where iOS's own swipe (between apps, along the home
+   * indicator) starts. A swipe starting there is left to iOS, so the two don't fight.
+   */
+  bottomInset: number
   /** The tab showing, and the ones either side of it (of the same kind), if any. */
   current: Tab
   prev?: Tab
@@ -202,7 +207,12 @@ export const useTabSwipe = (options: Options) => {
     PanResponder.create({
       // Mostly sideways, so taps on the bar's buttons still work. A thumb swipes in an arc, so a
       // fair bit of up or down is fine (the bar has nothing else to do with an upward swipe).
-      onMoveShouldSetPanResponderCapture: (_, g) => !busy.current && Math.abs(g.dx) > 10 && Math.abs(g.dx) >= Math.abs(g.dy) * 0.7,
+      // Not from the strip along the very bottom, where iOS switches apps.
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        !busy.current &&
+        g.y0 < latest.current.height - latest.current.bottomInset &&
+        Math.abs(g.dx) > 10 &&
+        Math.abs(g.dx) >= Math.abs(g.dy) * 0.7,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         latest.current.onStart()
