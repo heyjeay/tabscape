@@ -321,13 +321,16 @@ export const useTabSwipe = (options: Options) => {
   const motion = useMemo(() => {
     const deckScale = DECK_WIDTH / width
     const away = Animated.subtract(1, emerge)
+    // Beside the page, the tab before stops at the bar's top: a page's width, a little shorter
+    // (cropped, not squashed), so its rounded corners show above the bar instead of under it.
+    const besideSqueeze = (height - barHeight) / height
     const back: CardMotion = {
       // Between the tab button's front card (emerge 0) and beside the page on its left (1).
       x: Animated.add(Animated.multiply(emerge, Animated.add(x, -(width + GAP))), Animated.multiply(away, deckX)),
-      y: Animated.multiply(away, deckY),
+      y: Animated.add(Animated.multiply(emerge, -barHeight / 2), Animated.multiply(away, deckY)),
       rotate: emerge.interpolate({ inputRange: [0, 1], outputRange: [`${DECK_TILT}deg`, '0deg'] }),
       scale: emerge.interpolate({ inputRange: [0, 1], outputRange: [deckScale, 1] }),
-      squeeze: emerge.interpolate({ inputRange: [0, 1], outputRange: [DECK_HEIGHT / (height * deckScale), 1] }),
+      squeeze: emerge.interpolate({ inputRange: [0, 1], outputRange: [DECK_HEIGHT / (height * deckScale), besideSqueeze] }),
       shown: one
     }
     const next: CardMotion = {
@@ -347,14 +350,9 @@ export const useTabSwipe = (options: Options) => {
       squeeze: leaving.squeeze,
       shown: leaving.shown
     }
-    // The frame the tab before is seen through: its lower edge at the bottom of the screen while
-    // it's in the button, at the top of the bar once it's beside the page.
-    const lower = Animated.multiply(away, barHeight)
-    const frame = { transform: [{ translateY: lower }] }
-    const unframe = { transform: [{ translateY: Animated.multiply(lower, -1) }] }
     const flyFrame = { transform: [{ translateY: opening }] }
     const flyUnframe = { transform: [{ translateY: Animated.multiply(opening, -1) }] }
-    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going, frame, unframe, flyFrame, flyUnframe }
+    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going, flyFrame, flyUnframe }
   }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, opening, width, height, barHeight])
 
   let under = null
@@ -375,20 +373,11 @@ export const useTabSwipe = (options: Options) => {
     under = <FlyingCard tab={flight.from} motion={motion.going} />
   }
 
-  // The tab before, out of the button: always over the bar, cut off by a frame whose lower edge
-  // rises from the bottom of the screen (as it leaves the button, all of it is seen) to the top of
-  // the bar (beside the page, it stops at the bar, as the pages do under it). Nothing changes
+  // The tab before, out of the button: always over the bar (so it's seen leaving the button),
+  // and beside the page it ends just above the bar, rounded corners and all. Nothing changes
   // layer, so nothing jumps.
   const { back, next } = options
-  if (!flight && backOut && back) {
-    over = (
-      <Animated.View pointerEvents="none" style={[styles.frame, { bottom: options.barHeight }, motion.frame]}>
-        <Animated.View style={[styles.screen, { height: options.height }, motion.unframe]}>
-          <FlyingCard tab={back} motion={motion.back} />
-        </Animated.View>
-      </Animated.View>
-    )
-  }
+  if (!flight && backOut && back) over = <FlyingCard tab={back} motion={motion.back} />
   // The next tab: beside the page while you drag (over it, under the bar).
   const beside = !flight && moving && next ? <FlyingCard tab={next} motion={motion.next} /> : null
 
