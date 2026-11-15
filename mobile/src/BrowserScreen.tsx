@@ -436,6 +436,7 @@ export const BrowserScreen = () => {
     // In Tabscape's own build, iOS hands swipes along the very bottom to the app first (see
     // modules/tabscape-native), so they can change tabs too; in Expo Go that strip is left to iOS.
     bottomInset: hasNativeExtras ? 0 : insets.bottom,
+    barHeight: barRoom,
     current,
     measureDeck: () => measure(stack),
     next: group[groupAt + 1],

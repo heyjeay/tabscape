@@ -25,6 +25,8 @@ interface Options {
    * indicator) starts. A swipe starting there is left to iOS, so the two don't fight.
    */
   bottomInset: number
+  /** How tall the bottom bar is: a page beside this one stops at its top, as the pages do under it. */
+  barHeight: number
   /** The tab showing. */
   current: Tab
   /** Swiping left goes on to the next tab along… */
@@ -100,7 +102,7 @@ const place = (v: CardValues, to: Partial<Record<keyof CardValues, number>>) =>
  * With nothing that way the page only gives a little.
  */
 export const useTabSwipe = (options: Options) => {
-  const { width, height } = options
+  const { width, height, barHeight } = options
   /** Where your finger has taken the page (points). */
   const x = useRef(new Animated.Value(0)).current
   /** The new page coming in, from where it was beside this one. */
@@ -120,11 +122,6 @@ export const useTabSwipe = (options: Options) => {
   const [moving, setMoving] = useState(false)
   /** The tab before is out of the tab button (beside the page, or on its way out or back). */
   const [backOut, setBackOut] = useState(false)
-  /**
-   * It's on its way out of the button or back into it: drawn over the bar, so it's seen leaving
-   * and reaching the button (once it's beside the page, it goes under the bar, like the page).
-   */
-  const [backAbove, setBackAbove] = useState(false)
   const [flight, setFlight] = useState<Flight | null>(null)
   /** Going on: the page you left lifts behind the new one first, then comes over it to fly into the deck. */
   const [onTop, setOnTop] = useState(false)
@@ -165,17 +162,10 @@ export const useTabSwipe = (options: Options) => {
       deckY.setValue(spot.y)
       emerge.setValue(0)
       setBackOut(true)
-      setBackAbove(true)
-      Animated.spring(emerge, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }).start(({ finished }) => {
-        if (finished && wantBack.current) setBackAbove(false)
-      })
+      Animated.spring(emerge, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }).start()
     } else {
-      setBackAbove(true)
       Animated.timing(emerge, { toValue: 0, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished && !wantBack.current) {
-          setBackOut(false)
-          setBackAbove(false)
-        }
+        if (finished && !wantBack.current) setBackOut(false)
       })
     }
   }
@@ -205,7 +195,6 @@ export const useTabSwipe = (options: Options) => {
     if (!towardNext) {
       wantBack.current = false
       setBackOut(false)
-      setBackAbove(false)
     }
     setFlight({ from: current, to: target, forward: towardNext })
   }
@@ -350,8 +339,13 @@ export const useTabSwipe = (options: Options) => {
       squeeze: leaving.squeeze,
       shown: leaving.shown
     }
-    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going }
-  }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, width, height])
+    // The frame the tab before is seen through: its lower edge at the bottom of the screen while
+    // it's in the button, at the top of the bar once it's beside the page.
+    const lower = Animated.multiply(away, barHeight)
+    const frame = { transform: [{ translateY: lower }] }
+    const unframe = { transform: [{ translateY: Animated.multiply(lower, -1) }] }
+    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going, frame, unframe }
+  }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, width, height, barHeight])
 
   let under = null
   let over = null
@@ -363,17 +357,22 @@ export const useTabSwipe = (options: Options) => {
     under = <FlyingCard tab={flight.from} motion={motion.going} />
   }
 
-  // The tab before, out of the button: over the bar on its way out or back, beside the page (under
-  // the bar) in between. The next tab: beside the page while you drag (over it, under the bar).
+  // The tab before, out of the button: always over the bar, cut off by a frame whose lower edge
+  // rises from the bottom of the screen (as it leaves the button, all of it is seen) to the top of
+  // the bar (beside the page, it stops at the bar, as the pages do under it). Nothing changes
+  // layer, so nothing jumps.
   const { back, next } = options
-  const backCard = !flight && backOut && back ? <FlyingCard tab={back} motion={motion.back} /> : null
-  if (backAbove && backCard) over = backCard
-  const beside = !flight ? (
-    <>
-      {!backAbove && backCard}
-      {moving && next && <FlyingCard tab={next} motion={motion.next} />}
-    </>
-  ) : null
+  if (!flight && backOut && back) {
+    over = (
+      <Animated.View pointerEvents="none" style={[styles.frame, { bottom: options.barHeight }, motion.frame]}>
+        <Animated.View style={[styles.screen, { height: options.height }, motion.unframe]}>
+          <FlyingCard tab={back} motion={motion.back} />
+        </Animated.View>
+      </Animated.View>
+    )
+  }
+  // The next tab: beside the page while you drag (over it, under the bar).
+  const beside = !flight && moving && next ? <FlyingCard tab={next} motion={motion.next} /> : null
 
   const deckState: DeckState = flight
     ? (flight.forward ? (landed ? 'landed' : 'frozen') : 'lifted')
@@ -422,5 +421,7 @@ const FlyingCard = ({ tab, motion }: { tab: Tab; motion: CardMotion }) => {
 }
 
 const styles = StyleSheet.create({
+  frame: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
+  screen: { position: 'absolute', top: 0, left: 0, right: 0 },
   card: { borderRadius: SWIPE_RADIUS, overflow: 'hidden', backgroundColor: '#24242c' }
 })
