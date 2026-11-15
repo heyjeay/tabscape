@@ -120,6 +120,11 @@ export const useTabSwipe = (options: Options) => {
   const [moving, setMoving] = useState(false)
   /** The tab before is out of the tab button (beside the page, or on its way out or back). */
   const [backOut, setBackOut] = useState(false)
+  /**
+   * It's on its way out of the button or back into it: drawn over the bar, so it's seen leaving
+   * and reaching the button (once it's beside the page, it goes under the bar, like the page).
+   */
+  const [backAbove, setBackAbove] = useState(false)
   const [flight, setFlight] = useState<Flight | null>(null)
   /** Going on: the page you left lifts behind the new one first, then comes over it to fly into the deck. */
   const [onTop, setOnTop] = useState(false)
@@ -160,10 +165,17 @@ export const useTabSwipe = (options: Options) => {
       deckY.setValue(spot.y)
       emerge.setValue(0)
       setBackOut(true)
-      Animated.spring(emerge, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }).start()
+      setBackAbove(true)
+      Animated.spring(emerge, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }).start(({ finished }) => {
+        if (finished && wantBack.current) setBackAbove(false)
+      })
     } else {
+      setBackAbove(true)
       Animated.timing(emerge, { toValue: 0, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
-        if (finished && !wantBack.current) setBackOut(false)
+        if (finished && !wantBack.current) {
+          setBackOut(false)
+          setBackAbove(false)
+        }
       })
     }
   }
@@ -193,6 +205,7 @@ export const useTabSwipe = (options: Options) => {
     if (!towardNext) {
       wantBack.current = false
       setBackOut(false)
+      setBackAbove(false)
     }
     setFlight({ from: current, to: target, forward: towardNext })
   }
@@ -350,12 +363,15 @@ export const useTabSwipe = (options: Options) => {
     under = <FlyingCard tab={flight.from} motion={motion.going} />
   }
 
-  // Beside the page while you drag (over it, under the bar).
+  // The tab before, out of the button: over the bar on its way out or back, beside the page (under
+  // the bar) in between. The next tab: beside the page while you drag (over it, under the bar).
   const { back, next } = options
-  const beside = !flight && moving ? (
+  const backCard = !flight && backOut && back ? <FlyingCard tab={back} motion={motion.back} /> : null
+  if (backAbove && backCard) over = backCard
+  const beside = !flight ? (
     <>
-      {backOut && back && <FlyingCard tab={back} motion={motion.back} />}
-      {next && <FlyingCard tab={next} motion={motion.next} />}
+      {!backAbove && backCard}
+      {moving && next && <FlyingCard tab={next} motion={motion.next} />}
     </>
   ) : null
 
@@ -370,7 +386,7 @@ export const useTabSwipe = (options: Options) => {
     moving,
     /** How the tab button should look right now. */
     deck: deckState,
-    /** Cards in the air over everything, the bar included: the page you left, flying into the tab button. */
+    /** Cards in the air over everything, the bar included: the page you left flying into the tab button, or the tab before coming out of it (or going back). */
     over,
     /** Cards under the page coming in: the page you left lifting, or going off to the right. */
     under,
