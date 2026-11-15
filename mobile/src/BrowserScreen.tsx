@@ -660,6 +660,8 @@ export const BrowserScreen = () => {
             </Animated.View>
           )}
         </Animated.View>
+        {/* While you drag along the bar: the tabs either side, beside the page. */}
+        {swipe.beside}
       </View>
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />

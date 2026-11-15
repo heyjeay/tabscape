@@ -8,6 +8,8 @@ import { TabPicture } from './TabPicture'
 /** How far (points) or how fast a swipe has to go to change tabs. */
 const SWIPE = 60
 const FLICK = 0.5
+/** The gap between pages side by side (points). */
+const GAP = 14
 /** The corners pages take once they're moving, like cards. */
 export const SWIPE_RADIUS = 44
 /** The tab button's front card (BottomBar's stack): its tilt and size, which cards fly into and out of. */
@@ -25,9 +27,9 @@ interface Options {
   bottomInset: number
   /** The tab showing. */
   current: Tab
-  /** Swiping right goes on to the next tab along… */
+  /** Swiping left goes on to the next tab along… */
   next?: Tab
-  /** …and swiping left goes back to the tab in the tab button (the tab before this one). */
+  /** …and swiping right back to the tab before (the tab button's front card). */
   back?: Tab
   /** Where the tab button's front card is, on screen. */
   measureDeck: () => Promise<Rect | null>
@@ -43,77 +45,81 @@ interface Options {
 interface Flight {
   from: Tab
   to: Tab
-  /** On to the next tab (swiped right), or back to the tab in the button (swiped left). */
+  /** On to the next tab (swiped left), or back to the one before (swiped right). */
   forward: boolean
 }
 
 /**
- * How the tab button should look during a switch: as usual; kept as it was (the page you left is
- * still flying into it); just landed on (it shows the new cards, and the one that landed is
- * already in place); or kept with its front card gone (that tab is coming out of it).
+ * How the tab button should look: as usual; kept as it was (the page you left is still flying
+ * into it); just landed on (it shows the new cards, and the one that landed is already in place);
+ * or with its front card gone (that tab is out of it, beside the page).
  */
 export type DeckState = 'live' | 'frozen' | 'landed' | 'lifted'
 
+type Node = Animated.AnimatedNode
+
+/** The animated parts of a card. */
 interface CardMotion {
-  x: Animated.Value
-  y: Animated.Value
-  scale: Animated.Value
-  tilt: Animated.Value
+  x: Node
+  y: Node
+  /** Its tilt, as a rotation ("10deg"). */
+  rotate: Node
+  scale: Node
   /** How far it's squeezed towards the button card's shape (1 is a page's own shape). */
-  squeeze: Animated.Value
-  shown: Animated.Value
+  squeeze: Node
+  shown: Node
 }
 
-/** The values moving one card in the air. */
-const useCardMotion = (): CardMotion => {
-  const ref = useRef<CardMotion | null>(null)
-  ref.current ??= {
-    x: new Animated.Value(0),
-    y: new Animated.Value(0),
-    scale: new Animated.Value(1),
-    tilt: new Animated.Value(0),
-    squeeze: new Animated.Value(1),
-    shown: new Animated.Value(1)
-  }
-  return ref.current
-}
+const newValues = () => ({
+  x: new Animated.Value(0),
+  y: new Animated.Value(0),
+  scale: new Animated.Value(1),
+  tilt: new Animated.Value(0),
+  squeeze: new Animated.Value(1),
+  shown: new Animated.Value(1)
+})
+type CardValues = ReturnType<typeof newValues>
 
-const place = (card: CardMotion, to: Record<keyof CardMotion, number>) =>
-  (Object.keys(to) as (keyof CardMotion)[]).forEach(key => card[key].setValue(to[key]))
+const place = (v: CardValues, to: Partial<Record<keyof CardValues, number>>) =>
+  (Object.keys(to) as (keyof CardValues)[]).forEach(key => v[key].setValue(to[key]!))
 
 /**
- * Swiping along the bar to change tabs, as Arc Search does it (measured frame by frame from a
- * recording of it). The tab button is a deck: its front card is the tab before this one, and behind it the one before that.
+ * Swiping along the bar to change tabs, as Arc Search does it (measured frame by frame from
+ * recordings of it). The tab button is a deck of the tabs before this one.
  *
- * While you drag, the page follows your finger, full size, over the dark behind it.
+ * Drag right and the page follows your finger while the tab before comes out of the tab button:
+ * its card grows out of the button, straightening, into a full page beside this one, and
+ * follows along with it. Let go far enough and it slides in to fill the screen while this page
+ * goes off to the right; not far enough and it shrinks back down into the button.
  *
- * Swiped right, on to the next tab: the page carries on a little and lifts towards you while the
- * next one slides in from the right over it; then the page you left, now a card, comes over the
- * top and flies down into the tab button, tilting as it goes and narrowing to the button card's
- * shape, to land exactly on its front card. Meanwhile the button keeps its old cards; once it
- * lands, the old front card slides round to the back.
+ * Drag left and the next tab comes in from the right, beside the page. Let go far enough and it
+ * fills the screen while the page you left becomes a card that flies down into the tab button,
+ * tilting and narrowing to the button card's shape, to land on its front; not far enough and it
+ * slides back out.
  *
- * Swiped left, back to the tab in the button: its front card lifts off and grows out of the
- * button, straightening as it fills the screen, while the page you left lifts a little, then
- * shrinks away towards the top right and fades. Then the page you left takes the front of the
- * button.
- *
- * Not far enough and the page springs back; with nothing that way it only gives a little.
+ * With nothing that way the page only gives a little.
  */
 export const useTabSwipe = (options: Options) => {
+  const { width, height } = options
   /** Where your finger has taken the page (points). */
   const x = useRef(new Animated.Value(0)).current
-  /** The next tab's page sliding in from the right. */
+  /** The new page coming in, from where it was beside this one. */
   const enterX = useRef(new Animated.Value(0)).current
-  /** The page is hidden while a card coming out of the deck stands in for it. */
-  const pageShown = useRef(new Animated.Value(1)).current
-  /** The card in the air: the page you left going into the deck, or the tab coming out of it. */
-  const card = useCardMotion()
-  /** Going back: the page you left, shrinking away. */
-  const old = useCardMotion()
+  /** The tab before, out of the tab button: 0 in it, 1 beside the page. */
+  const emerge = useRef(new Animated.Value(0)).current
+  /** Where the tab button's front card is (from the screen's middle). */
+  const deckX = useRef(new Animated.Value(0)).current
+  const deckY = useRef(new Animated.Value(0)).current
+  /** Fixed parts of cards that don't move that way. */
+  const zero = useRef(new Animated.Value(0)).current
+  const one = useRef(new Animated.Value(1)).current
+  /** The picture of the page you left, going. */
+  const leaving = useRef(newValues()).current
 
   /** Your finger is on the bar, or a switch is under way: the page has the corners of a card. */
   const [moving, setMoving] = useState(false)
+  /** The tab before is out of the tab button (beside the page, or on its way out or back). */
+  const [backOut, setBackOut] = useState(false)
   const [flight, setFlight] = useState<Flight | null>(null)
   /** Going on: the page you left lifts behind the new one first, then comes over it to fly into the deck. */
   const [onTop, setOnTop] = useState(false)
@@ -123,6 +129,8 @@ export const useTabSwipe = (options: Options) => {
   const busy = useRef(false)
   const lastDx = useRef(0)
   const lastTouch = useRef(0)
+  /** Whether the tab before should be out (the drag is going right). */
+  const wantBack = useRef(false)
   const deck = useRef<Rect | null>(null)
 
   const latest = useRef(options)
@@ -142,66 +150,85 @@ export const useTabSwipe = (options: Options) => {
     }
   }
 
+  /** The tab before comes out of the tab button, or goes back into it. */
+  const bringBack = (out: boolean) => {
+    if (wantBack.current === out) return
+    wantBack.current = out
+    if (out) {
+      const spot = deckSpot()
+      deckX.setValue(spot.x)
+      deckY.setValue(spot.y)
+      emerge.setValue(0)
+      setBackOut(true)
+      Animated.spring(emerge, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }).start()
+    } else {
+      Animated.timing(emerge, { toValue: 0, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
+        if (finished && !wantBack.current) setBackOut(false)
+      })
+    }
+  }
+
   const finish = (dx: number, vx: number) => {
     const { back, next, current } = latest.current
-    const towardNext = dx > SWIPE || vx > FLICK
-    const towardBack = dx < -SWIPE || vx < -FLICK
+    const towardNext = dx < -SWIPE || vx < -FLICK
+    const towardBack = dx > SWIPE || vx > FLICK
     const target = towardNext ? next : towardBack ? back : undefined
     if (!target) {
-      // Not far enough, or nothing that way (a soft tap for trying): back it comes.
+      // Not far enough, or nothing that way (a soft tap for trying): back it all comes, and the
+      // tab before goes back into the button.
       if (towardNext || towardBack) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
-      Animated.spring(x, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 3 }).start(() => setMoving(false))
+      bringBack(false)
+      Animated.spring(x, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 3 }).start(() => {
+        if (!wantBack.current) setMoving(false)
+      })
       return
     }
     busy.current = true
     Haptics.selectionAsync()
-    const forward = towardNext
-    if (forward) {
-      // The picture of this page takes its place, exactly where it is now, before it goes.
-      place(card, { x: dx, y: 0, scale: 1, tilt: 0, squeeze: 1, shown: 1 })
-    } else {
-      // The tab button's front card, ready to come out of it; and this page's picture, ready to go.
-      const spot = deckSpot()
-      place(card, { x: spot.x, y: spot.y, scale: spot.scale, tilt: DECK_TILT, squeeze: spot.squeeze, shown: 1 })
-      place(old, { x: dx, y: 0, scale: 1, tilt: 0, squeeze: 1, shown: 1 })
-    }
-    setOnTop(!forward)
+    // The picture of this page takes its place, exactly where it is now, before it goes.
+    place(leaving, { x: dx, y: 0, scale: 1, tilt: 0, squeeze: 1, shown: 1 })
+    setOnTop(false)
     setLanded(false)
-    setFlight({ from: current, to: target, forward })
+    // Going back, the tab before's live page takes over from its card as it slides in.
+    if (!towardNext) {
+      wantBack.current = false
+      setBackOut(false)
+    }
+    setFlight({ from: current, to: target, forward: towardNext })
   }
 
-  // The cards are up: switch tabs, put the new page where it comes in from, and run it all.
+  // The leaving picture is up: switch tabs, put the new page where it was beside this one, and run it all.
   useLayoutEffect(() => {
     if (!flight) return
-    const { width, height, onSwitch } = latest.current
+    const { width, onSwitch } = latest.current
     const spot = deckSpot()
     const dx = lastDx.current
     const timing = (value: Animated.Value, toValue: number, config: Partial<Animated.TimingAnimationConfig>) =>
       Animated.timing(value, { useNativeDriver: true, toValue, ...config })
+    const slide = { duration: 260, easing: Easing.out(Easing.cubic) }
 
     x.setValue(0)
     let run: (done: () => void) => void
     if (flight.forward) {
-      // The next page, in from the right edge, full size.
-      enterX.setValue(width)
-      pageShown.setValue(1)
+      // The next page, from beside this one on the right, slides in to fill the screen…
+      enterX.setValue(dx + width + GAP)
       onSwitch(flight.to)
-      const slideIn = timing(enterX, 0, { duration: 240, easing: Easing.out(Easing.cubic) })
-      // The page you left carries on a little and lifts, behind the page sliding in over it…
-      const lift = { duration: 110, easing: Easing.out(Easing.quad) }
-      const lifting = Animated.parallel([timing(card.x, dx + width * 0.12, lift), timing(card.scale, 1.2, lift)])
-      // …then over the top, down and left into the tab button, shrinking, tilting and narrowing
-      // to the button card's shape on the way, to land exactly on its front card…
+      const slideIn = timing(enterX, 0, slide)
+      // …while the page you left shrinks a little into a card behind it…
+      const lift = { duration: 100, easing: Easing.out(Easing.quad) }
+      const lifting = Animated.parallel([timing(leaving.x, dx - width * 0.06, lift), timing(leaving.scale, 0.8, lift)])
+      // …then comes over the top, down and left into the tab button, shrinking, tilting and
+      // narrowing to the button card's shape, to land on its front card…
       const fly = { duration: 240, easing: Easing.bezier(0.3, 0.1, 0.25, 1) }
       const flying = Animated.parallel([
-        timing(card.x, spot.x, fly),
-        timing(card.y, spot.y, { ...fly, easing: Easing.bezier(0.5, 0, 0.3, 1) }),
-        timing(card.scale, spot.scale, { ...fly, easing: Easing.out(Easing.cubic) }),
-        timing(card.tilt, DECK_TILT, fly),
-        timing(card.squeeze, spot.squeeze, { duration: 140, delay: 100, easing: Easing.inOut(Easing.quad) })
+        timing(leaving.x, spot.x, fly),
+        timing(leaving.y, spot.y, { ...fly, easing: Easing.bezier(0.5, 0, 0.3, 1) }),
+        timing(leaving.scale, spot.scale, { ...fly, easing: Easing.out(Easing.cubic) }),
+        timing(leaving.tilt, DECK_TILT, fly),
+        timing(leaving.squeeze, spot.squeeze, { duration: 140, delay: 100, easing: Easing.inOut(Easing.quad) })
       ])
       // …where it fades into the card the button now shows (the same picture, in the same place).
-      const settling = timing(card.shown, 0, { duration: 90 })
+      const settling = timing(leaving.shown, 0, { duration: 90 })
       run = done => {
         let waiting = 2
         const one = () => {
@@ -217,41 +244,13 @@ export const useTabSwipe = (options: Options) => {
         })
       }
     } else {
-      // The tab's page waits, hidden, at full size, while its card grows out of the button over everything.
-      enterX.setValue(0)
-      pageShown.setValue(0)
+      // The tab before, out of the button beside this page, slides in to fill the screen (its
+      // live page taking over from its card, in the same place)…
+      enterX.setValue(dx - width - GAP)
       onSwitch(flight.to)
-      const grow = { duration: 270, delay: 50, easing: Easing.out(Easing.cubic) }
-      const growing = Animated.parallel([
-        timing(card.x, 0, grow),
-        timing(card.y, 0, grow),
-        timing(card.scale, 1, grow),
-        timing(card.tilt, 0, grow),
-        // Back to the page's own shape early on, so it grows as a page.
-        timing(card.squeeze, 1, { duration: 150, delay: 50, easing: Easing.out(Easing.quad) })
-      ])
-      // The page you left lifts a little, then shrinks away towards the top right and fades.
-      const away = { duration: 190, easing: Easing.in(Easing.quad) }
-      const leaving = Animated.sequence([
-        timing(old.scale, 1.12, { duration: 80, easing: Easing.out(Easing.quad) }),
-        Animated.parallel([
-          timing(old.x, width * 0.3, away),
-          timing(old.y, -height * 0.3, away),
-          timing(old.scale, 0.45, away),
-          timing(old.shown, 0, away)
-        ])
-      ])
-      run = done => {
-        let waiting = 2
-        const one = () => {
-          if (--waiting) return
-          // The card is the page now, in place: show the live page under it, then let the card go.
-          pageShown.setValue(1)
-          done()
-        }
-        growing.start(one)
-        leaving.start(one)
-      }
+      // …while the page you left slides off to the right.
+      const both = Animated.parallel([timing(enterX, 0, slide), timing(leaving.x, width + GAP, slide)])
+      run = done => both.start(() => done())
     }
 
     run(() => {
@@ -296,52 +295,94 @@ export const useTabSwipe = (options: Options) => {
       onPanResponderMove: (_, g) => {
         const { back, next } = latest.current
         // Nothing that way: it gives a little, but only a little.
-        const end = (g.dx > 0 && !next) || (g.dx < 0 && !back)
+        const end = (g.dx > 0 && !back) || (g.dx < 0 && !next)
         lastDx.current = end ? g.dx * 0.25 : g.dx
         x.setValue(lastDx.current)
+        // Going right, the tab before comes out of the button; back the other way, it goes back in.
+        if (back && g.dx > 4) bringBack(true)
+        else if (g.dx < -4) bringBack(false)
       },
       onPanResponderRelease: (_, g) => finish(lastDx.current, g.vx),
       onPanResponderTerminate: () => finish(0, 0)
     })
   ).current
 
-  // Built once: rebuilt on every render they'd be unhooked and hooked up again natively.
-  const pageStyle = useMemo(() => ({
-    opacity: pageShown,
-    transform: [{ translateX: Animated.add(x, enterX) }]
-  }), [x, enterX, pageShown])
+  // Built once per screen size: rebuilt on every render they'd be unhooked and hooked up again natively.
+  const motion = useMemo(() => {
+    const deckScale = DECK_WIDTH / width
+    const away = Animated.subtract(1, emerge)
+    const back: CardMotion = {
+      // Between the tab button's front card (emerge 0) and beside the page on its left (1).
+      x: Animated.add(Animated.multiply(emerge, Animated.add(x, -(width + GAP))), Animated.multiply(away, deckX)),
+      y: Animated.multiply(away, deckY),
+      rotate: emerge.interpolate({ inputRange: [0, 1], outputRange: [`${DECK_TILT}deg`, '0deg'] }),
+      scale: emerge.interpolate({ inputRange: [0, 1], outputRange: [deckScale, 1] }),
+      squeeze: emerge.interpolate({ inputRange: [0, 1], outputRange: [DECK_HEIGHT / (height * deckScale), 1] }),
+      shown: one
+    }
+    const next: CardMotion = {
+      // Beside the page on its right.
+      x: Animated.add(x, width + GAP),
+      y: zero,
+      rotate: zero.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1deg'] }),
+      scale: one,
+      squeeze: one,
+      shown: one
+    }
+    const going: CardMotion = {
+      x: leaving.x,
+      y: leaving.y,
+      rotate: leaving.tilt.interpolate({ inputRange: [-180, 180], outputRange: ['-180deg', '180deg'] }),
+      scale: leaving.scale,
+      squeeze: leaving.squeeze,
+      shown: leaving.shown
+    }
+    return { page: { transform: [{ translateX: Animated.add(x, enterX) }] }, back, next, going }
+  }, [x, enterX, emerge, deckX, deckY, zero, one, leaving, width, height])
 
   let under = null
   let over = null
   if (flight?.forward) {
-    const leaving = <FlyingCard tab={flight.from} motion={card} />
-    if (onTop) over = leaving
-    else under = leaving
+    const card = <FlyingCard tab={flight.from} motion={motion.going} />
+    if (onTop) over = card
+    else under = card
   } else if (flight) {
-    under = <FlyingCard tab={flight.from} motion={old} />
-    over = <FlyingCard tab={flight.to} motion={card} />
+    under = <FlyingCard tab={flight.from} motion={motion.going} />
   }
 
-  const deckState: DeckState = !flight ? 'live' : flight.forward ? (landed ? 'landed' : 'frozen') : 'lifted'
+  // Beside the page while you drag (over it, under the bar).
+  const { back, next } = options
+  const beside = !flight && moving ? (
+    <>
+      {backOut && back && <FlyingCard tab={back} motion={motion.back} />}
+      {next && <FlyingCard tab={next} motion={motion.next} />}
+    </>
+  ) : null
+
+  const deckState: DeckState = flight
+    ? (flight.forward ? (landed ? 'landed' : 'frozen') : 'lifted')
+    : backOut ? 'lifted' : 'live'
 
   return {
     handlers: pan.panHandlers as GestureResponderHandlers,
-    pageStyle,
+    pageStyle: motion.page,
     /** The page has the corners of a card (your finger is on the bar, or a switch is under way). */
     moving,
     /** How the tab button should look right now. */
     deck: deckState,
-    /** Cards in the air over everything, the bar included: into the tab button, or out of it. */
+    /** Cards in the air over everything, the bar included: the page you left, flying into the tab button. */
     over,
-    /** Cards under the page coming in: the page you left lifting, or shrinking away. */
-    under
+    /** Cards under the page coming in: the page you left lifting, or going off to the right. */
+    under,
+    /** The tabs either side, beside the page while you drag (over it, under the bar). */
+    beside
   }
 }
 
 /**
- * A page's picture as a card in the air. It can narrow to the tab button card's shape while
- * keeping the picture's own proportions: the outside is squeezed and the picture inside is
- * stretched back by as much, so it's cropped (as the button's card is), not squashed.
+ * A page's picture as a card. It can narrow to the tab button card's shape while keeping the
+ * picture's own proportions: the outside is squeezed and the picture inside is stretched back by
+ * as much, so it's cropped (as the button's card is), not squashed.
  */
 const FlyingCard = ({ tab, motion }: { tab: Tab; motion: CardMotion }) => {
   const style = useMemo(() => ({
@@ -349,7 +390,7 @@ const FlyingCard = ({ tab, motion }: { tab: Tab; motion: CardMotion }) => {
     transform: [
       { translateX: motion.x },
       { translateY: motion.y },
-      { rotate: motion.tilt.interpolate({ inputRange: [-180, 180], outputRange: ['-180deg', '180deg'] }) },
+      { rotate: motion.rotate },
       { scale: motion.scale },
       { scaleY: motion.squeeze }
     ]
