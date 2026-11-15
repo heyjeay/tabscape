@@ -351,7 +351,8 @@ export const BrowserScreen = () => {
     }
     // A start page asks for site icons it hasn't got: each is handed over as it's found (once, ever).
     if (data.type === 'icons' && Array.isArray(data.hosts)) {
-      for (const host of data.hosts.filter((h): h is string => typeof h === 'string').slice(0, 300)) {
+      if (tabs.find(t => t.id === id)?.url) return
+      for (const host of data.hosts.filter((h): h is string => typeof h === 'string' && h.length < 300 && (!h.includes('://') || /^https?:\/\/[^/]+$/i.test(h))).slice(0, 300)) {
         iconFor(host).then(uri => {
           webs.get(id)?.inject(`window.tabscapeIcons && window.tabscapeIcons(${JSON.stringify({ [host]: uri })}); true;`)
         })

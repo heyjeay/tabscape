@@ -12,8 +12,34 @@ import { load, save } from './storage'
  * in the app's documents (which the start page may read), and used from there ever after.
  */
 
-/** A site's key: its host, lower case, without "www." (as the start page names them). */
-export const iconKey = (host: string) => host.toLowerCase().replace(/^www\./, '')
+/**
+ * A site's key: its host, lower case, without "www." (as the start page names them); or, for a
+ * server with a port or on your own network, its origin (see iconSiteOf), kept as it is.
+ */
+export const iconKey = (host: string) => (host.includes('://') ? host.toLowerCase().replace(/\/+$/, '') : host.toLowerCase().replace(/^www\./, ''))
+
+/** Keep in step with iconSiteOf in the start page's src/lib/inApp.ts. */
+/** Hosts on your own network (an IP address, a name with no dots, .local…), often plain http. */
+const LOCAL_HOST = /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-f:.]+\]|[^.]+|.+\.(local|lan|home|internal|localhost|test))$/i
+
+/**
+ * What the app keeps a link's icon under. An ordinary site: its host, lower case, without "www."
+ * A server with a port, or a plain-http one on your own network (a game server's panel, a NAS):
+ * its whole origin, "http://192.168.1.5:40120", since that's the only place its icon is.
+ */
+export const iconSiteOf = (url: string | null): string | null => {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    const host = u.hostname.toLowerCase()
+    if (!host) return null
+    return u.port || (u.protocol === 'http:' && LOCAL_HOST.test(host)) ? u.origin.toLowerCase() : host.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
 
 const folder = new Directory(Paths.document, 'icons')
 /**
@@ -89,10 +115,14 @@ const absolute = (href: string, base: string) => {
   }
 }
 
-/** What a homepage says about its icons: home-screen icons, other icons (with the size they say), and its web app manifest. */
+/**
+ * What a homepage says about its icons: home-screen icons, other icons (with the size they say),
+ * drawn ones (SVG), and its web app manifest.
+ */
 const iconsNamedIn = (html: string, base: string) => {
   const touch: string[] = []
   const other: { href: string; size: number }[] = []
+  const vector: string[] = []
   let manifest: string | null = null
   for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
     const rel = /\brel\s*=\s*["']?([^"'>]+)/i.exec(tag)?.[1]?.toLowerCase() ?? ''
@@ -103,9 +133,10 @@ const iconsNamedIn = (html: string, base: string) => {
     if (rel.includes('manifest')) manifest ??= url
     else if (!/icon/.test(rel)) continue
     else if (rel.includes('apple-touch-icon')) touch.push(url)
-    else if (!/\.svg(\?|$)/i.test(url)) other.push({ href: url, size: Number(/\bsizes\s*=\s*["']?(\d+)/i.exec(tag)?.[1] ?? 0) })
+    else if (/\.svg(\?|$)/i.test(url) || /\btype\s*=\s*["']?image\/svg/i.test(tag)) vector.push(url)
+    else other.push({ href: url, size: Number(/\bsizes\s*=\s*["']?(\d+)/i.exec(tag)?.[1] ?? 0) })
   }
-  return { touch, other, manifest }
+  return { touch, other, vector, manifest }
 }
 
 /** A web app manifest's icons, biggest first (they're often 192 or 512 pixels: the sharpest there is). */
@@ -180,7 +211,16 @@ export const imageKind = (b: Uint8Array): string | null => {
   return null
 }
 
-/** Downloads an image, if it is one (not an error page or an SVG), up to 1 MB, with how wide it really is. */
+/**
+ * An SVG drawing (not a web page some servers send for any address they don't have): its start,
+ * after any XML declaration, comments or doctype, is an <svg> tag.
+ */
+const isSvg = (b: Uint8Array) => {
+  const head = String.fromCharCode(...b.subarray(0, 600)).replace(/^\uFEFF/, '')
+  return /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE svg[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(head)
+}
+
+/** Downloads an image, if it is one (not an error page), up to 1 MB, with how wide it really is. */
 const download = async (url: string): Promise<{ bytes: Uint8Array; ext: string; width: number } | null> => {
   try {
     const response = await fetchAsSafari(url, IMAGES)
@@ -188,7 +228,9 @@ const download = async (url: string): Promise<{ bytes: Uint8Array; ext: string; 
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.length < 64 || bytes.length > 1_000_000) return null
     const ext = imageKind(bytes)
-    return ext ? { bytes, ext, width: imageWidth(bytes) } : null
+    if (ext) return { bytes, ext, width: imageWidth(bytes) }
+    // A drawn icon is sharp at any size: counted as just sharp, so a real home-screen icon still wins.
+    return isSvg(bytes) ? { bytes, ext: 'svg', width: SHARP } : null
   } catch {
     return null
   }
@@ -221,8 +263,8 @@ export const parentSite = (key: string) => {
 
 /** Where the icons for a site might be, best first, from its homepage. */
 const candidatesFor = async (key: string) => {
-  const home = `https://${key}/`
-  let named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], manifest: null }
+  const home = key.includes('://') ? `${key}/` : `https://${key}/`
+  let named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], vector: [], manifest: null }
   try {
     const response = await fetchAsSafari(home)
     if (response.ok) named = iconsNamedIn((await response.text()).slice(0, 300_000), response.url || home)
@@ -273,7 +315,9 @@ const ranked = async (named: ReturnType<typeof iconsNamedIn>, home: string) => {
     // A bigger copy of each first, where the image service can make one.
     ...[...named.other].sort((a, b) => b.size - a.size).flatMap(icon => [biggerCopy(icon.href), icon.href].filter((href): href is string => !!href)),
     ...fromManifest.filter(icon => icon.size < SHARP).map(icon => icon.href),
-    `${home}favicon.ico`
+    `${home}favicon.ico`,
+    // Drawn icons last: the start page shows them, but not the app's own tab cards.
+    ...named.vector
   ]
 }
 
@@ -335,12 +379,14 @@ const widthOf = (entry: Entry | undefined) =>
  * page shows it small in the middle of its tile instead of stretching it blurry.
  */
 const find = async (key: string): Promise<string | null> => {
-  const parent = parentSite(key)
+  // A server on your own network (or with a port) is only asked itself: it has no main site, and DuckDuckGo can't see it.
+  const own = key.includes('://')
+  const parent = own ? null : parentSite(key)
   let best = await bestOf(await candidatesFor(key), TRIES)
   // Nothing on the subdomain: the site it belongs to (its icon is usually the same brand's).
   if (!best && parent) best = await bestOf(await candidatesFor(parent), TRIES)
   // Still nothing, or only a tiny one: DuckDuckGo's copy (the site's, or the one it belongs to).
-  if (!best || best.width < 32) best = await bestOf([iconService(key), ...(parent ? [iconService(parent)] : [])], 2, best)
+  if (!own && (!best || best.width < 32)) best = await bestOf([iconService(key), ...(parent ? [iconService(parent)] : [])], 2, best)
   if (!best) {
     index[key] = { none: Date.now() }
     persist()
@@ -398,13 +444,14 @@ export const iconsFromPage = (pageUrl: string, links: { rel: string; href: strin
   } catch {
     return
   }
-  if (!/^https?:$/.test(home.protocol)) return
-  const key = iconKey(home.hostname)
+  const site = iconSiteOf(pageUrl)
+  if (!site) return
+  const key = iconKey(site)
   ready.then(() => {
     const have = widthOf(index[key])
     if (have >= SHARP || offered.has(key) || inFlight.has(key)) return
     offered.add(key)
-    const named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], manifest: null }
+    const named: ReturnType<typeof iconsNamedIn> = { touch: [], other: [], vector: [], manifest: null }
     for (const link of links.slice(0, 30)) {
       const rel = String(link.rel).toLowerCase()
       const href = absolute(String(link.href), home.href)
@@ -412,7 +459,8 @@ export const iconsFromPage = (pageUrl: string, links: { rel: string; href: strin
       if (rel.includes('manifest')) named.manifest ??= href
       else if (!rel.includes('icon')) continue
       else if (rel.includes('apple-touch-icon')) named.touch.push(href)
-      else if (!/\.svg(\?|$)/i.test(href)) named.other.push({ href, size: Number(/\d+/.exec(String(link.sizes))?.[0] ?? 0) })
+      else if (/\.svg(\?|$)/i.test(href)) named.vector.push(href)
+      else named.other.push({ href, size: Number(/\d+/.exec(String(link.sizes))?.[0] ?? 0) })
     }
     queue.push(async () => {
       try {

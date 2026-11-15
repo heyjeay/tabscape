@@ -5,7 +5,7 @@ import { useFavicons } from '@/composables/useFavicons'
 import { faviconUrl } from '@/lib/favicons'
 import { gradientCss, type Gradient } from '@/lib/gradients'
 import { hostOf } from '@/lib/autosort'
-import { appIcons, askAppForIcon, inApp } from '@/lib/inApp'
+import { appIcons, askAppForIcon, iconSiteOf, inApp } from '@/lib/inApp'
 import type { Link } from '@/lib/defaults'
 
 /**
@@ -29,11 +29,11 @@ watch(() => [props.link.url, state.icons[props.link.id], favicons.enabled.value]
  */
 const appIcon = computed(() => {
   if (!inApp) return null
-  const host = hostOf(props.link.url)
-  return host ? (appIcons[host] ?? null) : null
+  const site = iconSiteOf(props.link.url)
+  return site ? (appIcons[site] ?? null) : null
 })
 watchEffect(() => {
-  const host = inApp ? hostOf(props.link.url) : null
+  const host = inApp ? iconSiteOf(props.link.url) : null
   if (host && !state.icons[props.link.id]) askAppForIcon(host)
 })
 /** A small icon (the app marks them ".s." when it saves them): shown smaller, on a light tile, rather than stretched blurry to fill one. */
