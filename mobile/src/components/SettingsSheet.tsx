@@ -4,9 +4,10 @@ import { LinearGradient } from 'expo-linear-gradient'
 import type { SFSymbol } from 'expo-symbols'
 import type { Ionicons } from '@expo/vector-icons'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
-import { ActionSheetIOS, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActionSheetIOS, Alert, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { blockedNetworkCount, hasNativeExtras, setBlocking } from '../../modules/tabscape-native'
 import { colors, links } from '../config'
+import { APP_ICONS, canChangeAppIcon, currentAppIcon, setAppIcon } from '../lib/appIcons'
 import { ENGINES, engineOf, type EngineId } from '../lib/engines'
 import { clearVisits, clearVisitsSince } from '../lib/history'
 import { queueImport } from '../lib/savedPages'
@@ -79,11 +80,20 @@ const archiveLabel = (hours: number) => {
 export const SettingsSheet = (props: Props) => {
   const { visible, onClose } = props
   const [settings, setSettings] = useState<BrowserSettings | null>(null)
-  const [page, setPage] = useState<'main' | 'sites'>('main')
+  const [page, setPage] = useState<'main' | 'sites' | 'icon'>('main')
+  /** The home screen icon in use (an alternate's name, or null for the main one). */
+  const [appIcon, setAppIconShown] = useState(currentAppIcon)
 
   useEffect(() => {
     if (visible) loadSettings().then(setSettings)
   }, [visible])
+
+  const pickAppIcon = (name: string | null) => {
+    if (name === appIcon) return
+    setAppIcon(name)
+      .then(() => setAppIconShown(name))
+      .catch(() => Alert.alert("Couldn't change the icon", 'Try again in a moment.'))
+  }
 
   const change = (next: Partial<BrowserSettings>) => {
     if (!settings) return
@@ -156,7 +166,7 @@ export const SettingsSheet = (props: Props) => {
               </Pressable>
             )}
           </View>
-          <Text style={styles.heading}>{page === 'sites' ? 'Site Settings' : 'Settings'}</Text>
+          <Text style={styles.heading}>{page === 'sites' ? 'Site Settings' : page === 'icon' ? 'App Icon' : 'Settings'}</Text>
           <View style={[styles.headerSide, styles.headerRight]}>
             <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Done">
               <Glass style={styles.done} interactive>
@@ -166,7 +176,37 @@ export const SettingsSheet = (props: Props) => {
           </View>
         </View>
 
-        {page === 'sites' ? (
+        {page === 'icon' ? (
+          <ScrollView contentContainerStyle={styles.list}>
+            <Text style={styles.note}>
+              {canChangeAppIcon
+                ? "Tabscape's icon on your home screen. Each follows your home screen's look too: Dark and Tinted have their own versions."
+                : 'Changing the icon needs the latest Tabscape from TestFlight.'}
+            </Text>
+            <Glass style={styles.iconCard}>
+              {APP_ICONS.map(icon => {
+                const on = icon.name === appIcon
+                return (
+                  <Pressable
+                    key={icon.label}
+                    onPress={() => pickAppIcon(icon.name)}
+                    disabled={!canChangeAppIcon}
+                    style={styles.iconChoice}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on, disabled: !canChangeAppIcon }}
+                    accessibilityLabel={`${icon.label} icon`}
+                  >
+                    <View style={[styles.iconRing, on && styles.iconRingOn]}>
+                      <Image source={icon.thumb} style={styles.iconThumb} />
+                    </View>
+                    <Text style={[styles.iconLabel, on && styles.iconLabelOn]}>{icon.label}</Text>
+                    {on && <Icon sf="checkmark.circle.fill" fallback="checkmark-circle" size={18} color="#0a84ff" />}
+                  </Pressable>
+                )
+              })}
+            </Glass>
+          </ScrollView>
+        ) : page === 'sites' ? (
           <ScrollView contentContainerStyle={styles.list}>
             <Text style={styles.note}>
               Text sizes you&apos;ve picked for each site, with the A buttons in the ⌃ menu. Desktop Site is set for each tab there too.
@@ -216,6 +256,15 @@ export const SettingsSheet = (props: Props) => {
                 value={LOOK_NAMES[settings?.tiles.look ?? 'default']}
                 chevron
                 onPress={props.onCustomiseIcons}
+              />
+              <Row
+                sf="app.badge.fill"
+                fallback="apps"
+                gradient={['#3b3f9e', '#8b6cff']}
+                title="App Icon"
+                value={APP_ICONS.find(i => i.name === appIcon)?.label ?? 'Midnight'}
+                chevron
+                onPress={() => setPage('icon')}
               />
               <Row sf="globe" fallback="globe-outline" color="#000000" title="Site Settings" chevron onPress={() => setPage('sites')} />
             </Group>
@@ -386,5 +435,12 @@ const styles = StyleSheet.create({
   value: { color: colors.secondary, fontSize: 17, maxWidth: 140 },
   note: { color: colors.secondary, fontSize: 14, lineHeight: 19, paddingHorizontal: 6 },
   empty: { color: colors.secondary, fontSize: 15, textAlign: 'center', marginTop: 30 },
-  about: { color: colors.dim, fontSize: 13, textAlign: 'center' }
+  about: { color: colors.dim, fontSize: 13, textAlign: 'center' },
+  iconCard: { borderRadius: 26, paddingVertical: 18, paddingHorizontal: 8, flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 },
+  iconChoice: { width: '33.33%', alignItems: 'center', gap: 7 },
+  iconRing: { padding: 3, borderRadius: 22, borderWidth: 2.5, borderColor: 'transparent' },
+  iconRingOn: { borderColor: '#0a84ff' },
+  iconThumb: { width: 68, height: 68, borderRadius: 68 * 0.2237 },
+  iconLabel: { color: colors.secondary, fontSize: 14, fontWeight: '500' },
+  iconLabelOn: { color: colors.text, fontWeight: '700' }
 })

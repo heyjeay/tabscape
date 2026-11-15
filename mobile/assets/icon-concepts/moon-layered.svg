@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g id="layered-bg">
+      <defs>
+        <linearGradient id="layered-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0e2c"/><stop offset="1" stop-color="#232c74"/></linearGradient>
+        <radialGradient id="layered-violet" cx="0.5" cy="0.4" r="0.7"><stop offset="0" stop-color="#8b6cff" stop-opacity="0.45"/><stop offset="1" stop-color="#8b6cff" stop-opacity="0"/></radialGradient>
+      </defs>
+      <rect width="1024" height="1024" fill="url(#layered-sky)"/><rect width="1024" height="1024" fill="url(#layered-violet)"/>
+      <circle cx="190" cy="210" r="9" fill="#fff" opacity="0.9"/><circle cx="330" cy="120" r="6" fill="#fff" opacity="0.7"/><circle cx="250" cy="380" r="5" fill="#fff" opacity="0.6"/><circle cx="140" cy="520" r="6" fill="#fff" opacity="0.55"/><circle cx="870" cy="760" r="7" fill="#fff" opacity="0.65"/><circle cx="300" cy="830" r="5" fill="#fff" opacity="0.5"/><circle cx="800" cy="140" r="5" fill="#fff" opacity="0.6"/></g>
+  <defs>
+      <linearGradient id="disc-body" x1="0.2" y1="0.1" x2="0.8" y2="0.9"><stop offset="0" stop-color="#fff" stop-opacity="0.26"/><stop offset="1" stop-color="#fff" stop-opacity="0.06"/></linearGradient>
+      <linearGradient id="disc-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.8"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.08"/><stop offset="1" stop-color="#fff" stop-opacity="0.35"/></linearGradient>
+      <filter id="disc-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="30"/></filter>
+    </defs>
+    <circle cx="470" cy="470" r="330" fill="#000" opacity="0.35" transform="translate(0 30)" filter="url(#disc-shadow)"/>
+    <circle cx="470" cy="470" r="330" fill="url(#disc-body)"/>
+    <circle cx="470" cy="470" r="330" fill="none" stroke="url(#disc-rim)" stroke-width="7"/>
+  
+  <defs>
+    <clipPath id="layered-clip"><path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z"/></clipPath>
+    <linearGradient id="layered-body" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#fff6dc" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffcf7a" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="layered-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="0.8" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="layered-spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="layered-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="layered-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="layered-frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="layered-inner"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z" fill="#ffe7a8" opacity="0.55" filter="url(#layered-glow)"/>
+  <path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z" fill="#000" opacity="0.45" transform="translate(0 34)" filter="url(#layered-shadow)"/>
+  <g clip-path="url(#layered-clip)">
+    <use href="#layered-bg" filter="url(#layered-frost)"/>
+    <path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z" fill="url(#layered-body)"/>
+    <path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="34" filter="url(#layered-inner)"/>
+    <ellipse cx="420" cy="330" rx="120" ry="70" transform="rotate(-38 420 330)" fill="url(#layered-spec)" opacity="0.7"/>
+  </g>
+  <path d="M 784.0 621.7 A 270 270 0 1 1 489.4 263.1 A 236 236 0 0 0 784.0 621.7 Z" fill="none" stroke="url(#layered-rim)" stroke-width="9"/>
+</svg>

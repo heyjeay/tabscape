@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g id="gold-bg">
+      <defs><radialGradient id="gold-wash" cx="0.5" cy="0.45" r="0.75"><stop offset="0" stop-color="#1d1b22"/><stop offset="1" stop-color="#050507"/></radialGradient></defs>
+      <rect width="1024" height="1024" fill="url(#gold-wash)"/>
+      <circle cx="190" cy="210" r="9" fill="#ffe6a6" opacity="0.9"/><circle cx="330" cy="120" r="6" fill="#ffe6a6" opacity="0.7"/><circle cx="250" cy="380" r="5" fill="#ffe6a6" opacity="0.6"/><circle cx="140" cy="520" r="6" fill="#ffe6a6" opacity="0.55"/><circle cx="870" cy="760" r="7" fill="#ffe6a6" opacity="0.65"/><circle cx="300" cy="830" r="5" fill="#ffe6a6" opacity="0.5"/><circle cx="800" cy="140" r="5" fill="#ffe6a6" opacity="0.6"/></g>
+  
+  
+  <defs>
+    <clipPath id="gold-clip"><path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z"/></clipPath>
+    <linearGradient id="gold-body" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#ffeeb5" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#f2a93b" stop-opacity="0.62"/>
+    </linearGradient>
+    <linearGradient id="gold-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff3cf" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#fff3cf" stop-opacity="0.15"/>
+      <stop offset="0.8" stop-color="#fff3cf" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#fff3cf" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="gold-spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="gold-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="gold-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="gold-frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="gold-inner"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#ffb93d" opacity="0.55" filter="url(#gold-glow)"/>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#000" opacity="0.6" transform="translate(0 34)" filter="url(#gold-shadow)"/>
+  <g clip-path="url(#gold-clip)">
+    <use href="#gold-bg" filter="url(#gold-frost)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="url(#gold-body)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="34" filter="url(#gold-inner)"/>
+    <ellipse cx="420" cy="330" rx="120" ry="70" transform="rotate(-38 420 330)" fill="url(#gold-spec)" opacity="0.7"/>
+  </g>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="url(#gold-rim)" stroke-width="9"/>
+</svg>

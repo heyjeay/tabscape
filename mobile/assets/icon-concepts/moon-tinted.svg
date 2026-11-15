@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g id="tinted-bg">
+      <defs><linearGradient id="tinted-wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#211857"/><stop offset="1" stop-color="#0c0a26"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#tinted-wash)"/>
+      <circle cx="190" cy="210" r="9" fill="#c9b8ff" opacity="0.9"/><circle cx="330" cy="120" r="6" fill="#c9b8ff" opacity="0.7"/><circle cx="250" cy="380" r="5" fill="#c9b8ff" opacity="0.6"/><circle cx="140" cy="520" r="6" fill="#c9b8ff" opacity="0.55"/><circle cx="870" cy="760" r="7" fill="#c9b8ff" opacity="0.65"/><circle cx="300" cy="830" r="5" fill="#c9b8ff" opacity="0.5"/><circle cx="800" cy="140" r="5" fill="#c9b8ff" opacity="0.6"/></g>
+  
+  
+  <defs>
+    <clipPath id="tinted-clip"><path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z"/></clipPath>
+    <linearGradient id="tinted-body" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#d9ccff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#7b5cff" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="tinted-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#efe8ff" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#efe8ff" stop-opacity="0.15"/>
+      <stop offset="0.8" stop-color="#efe8ff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#efe8ff" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="tinted-spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="tinted-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="tinted-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="tinted-frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="tinted-inner"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#8b6cff" opacity="0.55" filter="url(#tinted-glow)"/>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#000" opacity="0.45" transform="translate(0 34)" filter="url(#tinted-shadow)"/>
+  <g clip-path="url(#tinted-clip)">
+    <use href="#tinted-bg" filter="url(#tinted-frost)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="url(#tinted-body)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="34" filter="url(#tinted-inner)"/>
+    <ellipse cx="420" cy="330" rx="120" ry="70" transform="rotate(-38 420 330)" fill="url(#tinted-spec)" opacity="0.7"/>
+  </g>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="url(#tinted-rim)" stroke-width="9"/>
+</svg>

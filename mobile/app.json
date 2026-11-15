@@ -5,7 +5,7 @@
     "scheme": "tabscape",
     "version": "0.1.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icons/midnight.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#14141c",
     "ios": {
@@ -20,6 +20,11 @@
       },
       "runtimeVersion": {
         "policy": "fingerprint"
+      },
+      "icon": {
+        "light": "./assets/app-icons/midnight.png",
+        "dark": "./assets/app-icons/midnight-dark.png",
+        "tinted": "./assets/app-icons/midnight-tinted.png"
       }
     },
     "android": {
@@ -44,6 +49,79 @@
           "imageWidth": 150,
           "backgroundColor": "#14141c"
         }
+      ],
+      [
+        "expo-alternate-app-icons",
+        [
+          {
+            "name": "Clear",
+            "ios": {
+              "light": "./assets/app-icons/clear.png",
+              "dark": "./assets/app-icons/clear-dark.png",
+              "tinted": "./assets/app-icons/clear-tinted.png"
+            },
+            "android": {
+              "foregroundImage": "./assets/app-icons/clear.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          },
+          {
+            "name": "Aurora",
+            "ios": {
+              "light": "./assets/app-icons/aurora.png",
+              "dark": "./assets/app-icons/aurora-dark.png",
+              "tinted": "./assets/app-icons/aurora-tinted.png"
+            },
+            "android": {
+              "foregroundImage": "./assets/app-icons/aurora.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          },
+          {
+            "name": "Gold",
+            "ios": {
+              "light": "./assets/app-icons/gold.png",
+              "dark": "./assets/app-icons/gold-dark.png",
+              "tinted": "./assets/app-icons/gold-tinted.png"
+            },
+            "android": {
+              "foregroundImage": "./assets/app-icons/gold.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          },
+          {
+            "name": "Violet",
+            "ios": {
+              "light": "./assets/app-icons/tinted.png",
+              "dark": "./assets/app-icons/tinted-dark.png",
+              "tinted": "./assets/app-icons/tinted-tinted.png"
+            },
+            "android": {
+              "foregroundImage": "./assets/app-icons/tinted.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          },
+          {
+            "name": "Layered",
+            "ios": {
+              "light": "./assets/app-icons/layered.png",
+              "dark": "./assets/app-icons/layered-dark.png",
+              "tinted": "./assets/app-icons/layered-tinted.png"
+            },
+            "android": {
+              "foregroundImage": "./assets/app-icons/layered.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          },
+          {
+            "name": "Classic",
+            "ios": "./assets/app-icons/classic.png",
+            "android": {
+              "foregroundImage": "./assets/app-icons/classic.png",
+              "backgroundColor": "#0b0f2a"
+            }
+          }
+        ]
       ]
     ],
     "extra": {

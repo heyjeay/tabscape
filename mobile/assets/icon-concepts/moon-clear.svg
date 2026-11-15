@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g id="clear-bg">
+      <defs><linearGradient id="clear-wash" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0f8"/><stop offset="1" stop-color="#c3c9dd"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#clear-wash)"/>
+      
+  <filter id="clear-blobs" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="110"/></filter>
+  <g filter="url(#clear-blobs)"><circle cx="260" cy="240" r="260" fill="#b9a8ff" opacity="0.55"/><circle cx="820" cy="820" r="300" fill="#9cc8ff" opacity="0.5"/></g></g>
+  
+  
+  <defs>
+    <clipPath id="clear-clip"><path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z"/></clipPath>
+    <linearGradient id="clear-body" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="clear-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="0.8" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="clear-spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="clear-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="clear-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="clear-frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="clear-inner"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#000" opacity="0.22" transform="translate(0 34)" filter="url(#clear-shadow)"/>
+  <g clip-path="url(#clear-clip)">
+    <use href="#clear-bg" filter="url(#clear-frost)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="url(#clear-body)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="34" filter="url(#clear-inner)"/>
+    <ellipse cx="420" cy="330" rx="120" ry="70" transform="rotate(-38 420 330)" fill="url(#clear-spec)" opacity="0.7"/>
+  </g>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="url(#clear-rim)" stroke-width="9"/>
+</svg>

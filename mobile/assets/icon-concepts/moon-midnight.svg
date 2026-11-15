@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <g id="midnight-bg">
+      <defs>
+        <linearGradient id="midnight-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070a1f"/><stop offset="0.6" stop-color="#0d1338"/><stop offset="1" stop-color="#1c2463"/></linearGradient>
+        <radialGradient id="midnight-violet" cx="0.78" cy="0.15" r="0.8"><stop offset="0" stop-color="#8b6cff" stop-opacity="0.55"/><stop offset="1" stop-color="#8b6cff" stop-opacity="0"/></radialGradient>
+      </defs>
+      <rect width="1024" height="1024" fill="url(#midnight-sky)"/><rect width="1024" height="1024" fill="url(#midnight-violet)"/>
+      <circle cx="190" cy="210" r="9" fill="#fff" opacity="0.9"/><circle cx="330" cy="120" r="6" fill="#fff" opacity="0.7"/><circle cx="250" cy="380" r="5" fill="#fff" opacity="0.6"/><circle cx="140" cy="520" r="6" fill="#fff" opacity="0.55"/><circle cx="870" cy="760" r="7" fill="#fff" opacity="0.65"/><circle cx="300" cy="830" r="5" fill="#fff" opacity="0.5"/><circle cx="800" cy="140" r="5" fill="#fff" opacity="0.6"/></g>
+  
+  
+  <defs>
+    <clipPath id="midnight-clip"><path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z"/></clipPath>
+    <linearGradient id="midnight-body" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#fff6dc" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#ffd98a" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="midnight-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="0.8" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="midnight-spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="midnight-shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="midnight-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="midnight-frost" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="midnight-inner"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#ffe7a8" opacity="0.55" filter="url(#midnight-glow)"/>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="#000" opacity="0.45" transform="translate(0 34)" filter="url(#midnight-shadow)"/>
+  <g clip-path="url(#midnight-clip)">
+    <use href="#midnight-bg" filter="url(#midnight-frost)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="url(#midnight-body)"/>
+    <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="34" filter="url(#midnight-inner)"/>
+    <ellipse cx="420" cy="330" rx="120" ry="70" transform="rotate(-38 420 330)" fill="url(#midnight-spec)" opacity="0.7"/>
+  </g>
+  <path d="M 794.5 613.0 A 300 300 0 1 1 463.6 215.9 A 262 262 0 0 0 794.5 613.0 Z" fill="none" stroke="url(#midnight-rim)" stroke-width="9"/>
+</svg>
