@@ -46,7 +46,7 @@
 }
 .in-app .tl-links ol > li:nth-child(2) {
   grid-column: 1 / -1;
-  width: 40px !important;
+  width: 120px !important;
   height: 4px !important;
   margin-top: -14px;
   border-radius: 2px;
