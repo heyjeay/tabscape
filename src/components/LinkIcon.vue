@@ -36,8 +36,8 @@ watchEffect(() => {
   const host = inApp ? hostOf(props.link.url) : null
   if (host && !state.icons[props.link.id]) askAppForIcon(host)
 })
-/** A small tab icon (.ico): shown smaller, on a light tile, rather than stretched to fill one. */
-const small = computed(() => inApp && !state.icons[props.link.id] && /\.ico$/i.test(appIcon.value ?? ''))
+/** A small icon (the app marks them ".s." when it saves them): shown smaller, on a light tile, rather than stretched blurry to fill one. */
+const small = computed(() => inApp && !state.icons[props.link.id] && /\.s\.\w+$/i.test(appIcon.value ?? ''))
 
 const onError = () => {
   failed.value = true
