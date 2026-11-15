@@ -21,11 +21,7 @@
       "runtimeVersion": {
         "policy": "fingerprint"
       },
-      "icon": {
-        "light": "./assets/app-icons/midnight.png",
-        "dark": "./assets/app-icons/midnight-dark.png",
-        "tinted": "./assets/app-icons/midnight-tinted.png"
-      }
+      "icon": "./assets/Tabscape.icon"
     },
     "android": {
       "package": "io.github.heyjeay.tabscape",
