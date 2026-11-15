@@ -6,6 +6,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View, type GestureRespon
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass, liquidGlass } from './Glass'
+import type { DeckState } from './TabSwipe'
 import type { ViewRef } from './Hero'
 import { Icon } from './Icon'
 import { TabPicture } from './TabPicture'
@@ -18,6 +19,8 @@ interface Props {
    */
   front?: Tab
   behind?: Tab
+  /** What a tab switch is doing to the tab button (see TabSwipe). */
+  deck: DeckState
   tabCount: number
   progress: number
   loading: boolean
@@ -60,7 +63,7 @@ export const barTravel = barSpace
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
 export const BottomBar = ({
-  tab, front, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers,
+  tab, front, behind, deck, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers,
   swiping, position
 }: Props) => {
   // A private tab's bar is a plain deep violet whatever the site, so you can tell at a glance.
@@ -113,7 +116,7 @@ export const BottomBar = ({
     <ProgressLine progress={progress} loading={loading} accent={accent} />
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} ${tab.private ? 'private ' : ''}tabs`} hitSlop={10} style={styles.side}>
-        <TabStack tab={front ?? tab} behind={behind} frontRef={stackRef} />
+        <TabStack tab={front ?? tab} behind={behind} deck={deck} frontRef={stackRef} />
         {tab.private && (
           <View style={styles.badge} pointerEvents="none">
             <Icon sf="eye.slash.fill" fallback="eye-off" size={10} weight="bold" />
@@ -214,19 +217,60 @@ const ProgressLine = ({ progress, loading, accent }: { progress: number; loading
   )
 }
 
-/** A tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc. */
-const TabStack = ({ tab, behind, frontRef }: { tab: Tab; behind?: Tab; frontRef: RefObject<ViewRef | null> }) => (
-  <View style={styles.stack}>
-    {behind && (
-      <View style={[styles.card, styles.behind]}>
-        <TabPicture tab={behind} letterSize={13} style={StyleSheet.absoluteFill} />
-      </View>
-    )}
-    <View ref={frontRef} collapsable={false} style={[styles.card, styles.front, styles.frontBox]}>
-      <TabPicture tab={tab} letterSize={13} style={StyleSheet.absoluteFill} />
+/**
+ * A tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc.
+ * When the front card changes, the stack shuffles: the card that was in front slides round to
+ * the back, and the new front card settles in (unless it has just flown in and is already there).
+ * While a tab comes out of the deck, its front card is gone.
+ */
+const TabStack = ({ tab, behind, deck, frontRef }: {
+  tab: Tab; behind?: Tab; deck: DeckState; frontRef: RefObject<ViewRef | null>
+}) => {
+  /** 0 → 1 as the stack shuffles after its front card changes; 1 when it's settled. */
+  const shuffle = useRef(new Animated.Value(1)).current
+  const was = useRef({ front: tab.id, behindMoves: false, popsIn: false })
+  if (was.current.front !== tab.id) {
+    was.current = { front: tab.id, behindMoves: behind?.id === was.current.front, popsIn: deck !== 'landed' }
+    shuffle.setValue(0)
+  }
+  useEffect(() => {
+    Animated.spring(shuffle, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 5 }).start()
+  }, [tab.id, shuffle])
+  const motion = useRef({
+    behindX: shuffle.interpolate({ inputRange: [0, 1], outputRange: [4, -5] }),
+    behindY: shuffle.interpolate({ inputRange: [0, 1], outputRange: [-1, 3] }),
+    behindTilt: shuffle.interpolate({ inputRange: [0, 1], outputRange: ['10deg', '-14deg'] }),
+    frontScale: shuffle.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] })
+  }).current
+  const { behindMoves, popsIn } = was.current
+  return (
+    <View style={styles.stack}>
+      {behind && (
+        <Animated.View
+          style={[styles.card, styles.behindBox, behindMoves
+            ? { transform: [{ translateX: motion.behindX }, { translateY: motion.behindY }, { rotate: motion.behindTilt }] }
+            : styles.behind]}
+        >
+          <TabPicture tab={behind} letterSize={13} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+      )}
+      <Animated.View
+        ref={frontRef}
+        collapsable={false}
+        style={[
+          styles.card,
+          styles.frontBox,
+          {
+            opacity: deck === 'lifted' ? 0 : 1,
+            transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }, { scale: popsIn ? motion.frontScale : 1 }]
+          }
+        ]}
+      >
+        <TabPicture tab={tab} letterSize={13} style={StyleSheet.absoluteFill} />
+      </Animated.View>
     </View>
-  </View>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: TOP, paddingHorizontal: 22 },
@@ -248,8 +292,8 @@ const styles = StyleSheet.create({
   circle: { width: 35, height: 35, borderRadius: 17.5, alignItems: 'center', justifyContent: 'center' },
   stack: { width: 46, height: 44, alignItems: 'center', justifyContent: 'center' },
   card: { position: 'absolute', width: 27, height: 33, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  behind: { overflow: 'hidden', backgroundColor: '#2c2c35', transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
-  front: { transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }] },
+  behindBox: { overflow: 'hidden', backgroundColor: '#2c2c35' },
+  behind: { transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
   frontBox: { overflow: 'hidden' },
   place: {
     position: 'absolute', top: -GROW, left: 0, right: 0, height: GROW + 6,

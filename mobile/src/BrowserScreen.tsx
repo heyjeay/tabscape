@@ -396,12 +396,13 @@ export const BrowserScreen = () => {
     bottomInset: insets.bottom,
     current,
     measureDeck: () => measure(stack),
-    prev: group[groupAt - 1],
     next: group[groupAt + 1],
-    onStart: () => {
-      showBar(true)
-      snapshot()
-    },
+    // Back to the tab in the tab button, so the card that comes out of it is the one you saw there.
+    back: deckFor(0).front,
+    // A fresh picture of the page for the card that flies into the tab button, taken as soon as a
+    // finger is on the bar so it's ready in time.
+    onTouch: () => snapshot(),
+    onStart: () => showBar(true),
     onSwitch: tab => {
       if (!liveIds.current.includes(tab.id) && tab.url && tab.thumbnail) {
         coverFade.setValue(1)
@@ -411,10 +412,9 @@ export const BrowserScreen = () => {
       select(tab.id)
     }
   })
-  // While the page you left flies into the tab button, the button keeps the cards it had when you
-  // let go, until it lands.
+  // While a card is in the air, the tab button keeps the cards it had when you let go, until it lands.
   const shownDeck = useRef(deckFor(0))
-  if (!swipe.landing) shownDeck.current = deckFor(0)
+  if (swipe.deck === 'live' || swipe.deck === 'landed') shownDeck.current = deckFor(0)
   const deck = shownDeck.current
 
   /** Holding +: the tab you closed last comes back. */
@@ -542,7 +542,7 @@ export const BrowserScreen = () => {
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
       <View style={styles.page}>
         {/* Switching tabs: the page you left, shrinking into a card (or away) under the page coming in. */}
-        {swipe.leavingUnder}
+        {swipe.under}
         <Animated.View
           ref={page}
           collapsable={false}
@@ -622,6 +622,7 @@ export const BrowserScreen = () => {
           tab={current}
           front={deck.front}
           behind={deck.behind}
+          deck={swipe.deck}
           tabCount={group.length}
           progress={progress}
           loading={nav.loading}
@@ -642,7 +643,7 @@ export const BrowserScreen = () => {
       )}
 
       {/* Going on a tab: the page you left, flying down into the tab button over the bar. */}
-      {swipe.leavingOver}
+      {swipe.over}
 
       <PageActions
         visible={showActions}
