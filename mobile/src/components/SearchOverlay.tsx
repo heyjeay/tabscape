@@ -24,6 +24,13 @@ interface Props {
 /** A row under the field: a page from your history, a suggestion, or a recent search. */
 type Row = { kind: 'page'; visit: Visit } | { kind: 'suggestion' | 'recent'; text: string }
 
+/**
+ * How tall the keyboard was last time (0 until it's first been up). The panel springs straight to
+ * there as search opens, as quick as the ⌃ menu, rather than waiting for the keyboard, which only
+ * starts once the field has focus and then comes up at its own pace.
+ */
+let keyboardHeight = 0
+
 /** History matches shown above the suggestions. */
 const PAGES = 2
 
@@ -64,7 +71,12 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
         setEngine(engineOf(settings.searchEngine))
       })
       Animated.timing(dim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
-      Animated.spring(drop, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 3 }).start()
+      // The same spring as the ⌃ menu (useSlideUp); with the keyboard on its way, straight up to where it'll be.
+      Animated.spring(drop, { toValue: 0, useNativeDriver: true, speed: 22, bounciness: 3 }).start()
+      if (keyboard && keyboardHeight) {
+        liftTo.current = keyboardHeight
+        Animated.spring(lift, { toValue: keyboardHeight, useNativeDriver: true, speed: 22, bounciness: 0 }).start()
+      }
     } else if (mounted) {
       Keyboard.dismiss()
       Animated.timing(dim, { toValue: 0, duration: 180, useNativeDriver: true }).start()
@@ -74,11 +86,18 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
     }
   }, [visible])
 
-  // Rides on the keyboard: up with it, down with it, at its speed.
+  // Rides on the keyboard: up with it, down with it, at its speed (unless it's already where the keyboard's going).
+  const liftTo = useRef(insets.bottom)
   useEffect(() => {
-    const follow = (to: number, duration: number) =>
+    const follow = (to: number, duration: number) => {
+      if (Math.abs(to - liftTo.current) < 2) return
+      liftTo.current = to
       Animated.timing(lift, { toValue: to, duration: duration || 250, easing: Easing.bezier(0.17, 0.59, 0.4, 0.77), useNativeDriver: true }).start()
-    const shown = Keyboard.addListener('keyboardWillShow', e => follow(e.endCoordinates.height, e.duration))
+    }
+    const shown = Keyboard.addListener('keyboardWillShow', e => {
+      keyboardHeight = e.endCoordinates.height
+      follow(e.endCoordinates.height, e.duration)
+    })
     const hidden = Keyboard.addListener('keyboardWillHide', e => follow(insets.bottom, e.duration))
     return () => {
       shown.remove()

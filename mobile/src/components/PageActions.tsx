@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard'
 import type { SFSymbol } from 'expo-symbols'
 import type { Ionicons } from '@expo/vector-icons'
 import { useEffect, useState } from 'react'
-import { Animated, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Animated, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import { hostOf } from '../lib/address'
@@ -38,8 +38,8 @@ type Fallback = keyof typeof Ionicons.glyphMap
 
 /**
  * What ⌃ opens, laid out like Arc's: back, forward, the address, copy and reload in a capsule,
- * four things to do with the page, its text size and desktop version, then history, Safari
- * and settings. It springs up over the page, which stays
+ * four things to do with the page, its text size and desktop version, then history and
+ * settings (the same size as the two above them). It springs up over the page, which stays
  * in view above it; a tap on the page closes it.
  */
 export const PageActions = (props: Props) => {
@@ -111,7 +111,6 @@ export const PageActions = (props: Props) => {
 
           <View style={styles.rows}>
             <Pill sf="clock" fallback="time-outline" label="History" onPress={props.onHistory} />
-            <Pill sf="safari" fallback="compass-outline" label="Safari" onPress={() => url && Linking.openURL(url).catch(() => {})} disabled={!url} />
             <Pill sf="gearshape" fallback="settings-outline" label="Settings" onPress={props.onSettings} />
           </View>
         </Glass>
@@ -171,7 +170,7 @@ const styles = StyleSheet.create({
   desktopWrap: { flex: 1 },
   desktop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 20, paddingHorizontal: 12 },
   desktopText: { color: colors.text, fontSize: 15, fontWeight: '500' },
-  rows: { flexDirection: 'row', gap: 10 },
+  rows: { flexDirection: 'row', gap: 12 },
   pillWrap: { flex: 1 },
   pill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 20 },
   pillText: { color: colors.text, fontSize: 15, fontWeight: '500' },
