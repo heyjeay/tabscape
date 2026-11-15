@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Easing, PanResponder, StyleSheet, type GestureResponderHandlers } from 'react-native'
+import { Animated, Easing, LayoutAnimation, PanResponder, StyleSheet, type GestureResponderHandlers } from 'react-native'
 import type { Tab } from '../useTabs'
 import { TabPicture } from './TabPicture'
 
@@ -39,7 +39,12 @@ export const useTabSwipe = ({ width, prev, next, currentId, onStart, onSwitch }:
   const x = useRef(new Animated.Value(0)).current
   /** 0 full size, 1 shrunk into a card. */
   const small = useRef(new Animated.Value(0)).current
-  const [swiping, setSwiping] = useState(false)
+  const [swiping, setSwipingNow] = useState(false)
+  /** The bar grows taller while you swipe (and shrinks back after), smoothly. */
+  const setSwiping = (on: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(200, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity))
+    setSwipingNow(on)
+  }
   /** Mid-switch: the next touch waits until the new page has grown back. */
   const busy = useRef(false)
   /** A switch is under way: once the new tab is showing, the page comes back to the middle and grows. */
@@ -100,8 +105,9 @@ export const useTabSwipe = ({ width, prev, next, currentId, onStart, onSwitch }:
 
   const pan = useRef(
     PanResponder.create({
-      // Sideways only, so taps on the bar's buttons still work.
-      onMoveShouldSetPanResponderCapture: (_, g) => !busy.current && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      // Mostly sideways, so taps on the bar's buttons still work. A thumb swipes in an arc, so a
+      // fair bit of up or down is fine (the bar has nothing else to do with an upward swipe).
+      onMoveShouldSetPanResponderCapture: (_, g) => !busy.current && Math.abs(g.dx) > 10 && Math.abs(g.dx) >= Math.abs(g.dy) * 0.7,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         latest.current.onStart()

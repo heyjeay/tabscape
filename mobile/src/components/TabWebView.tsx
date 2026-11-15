@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ForwardRefExoticComponent, type RefAttributes } from 'react'
 import { Linking, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import { WebView as LibraryWebView, type WebViewMessageEvent, type WebViewNavigation, type WebViewProps } from 'react-native-webview'
 import { log } from '../config'
@@ -44,6 +44,8 @@ interface Props {
   onScroll: (y: number, contentHeight: number, viewHeight: number) => void
   /** Each site's own text size (percent, by host), set as its pages start. */
   textSizes: Record<string, number>
+  /** On screen (live pages for other tabs wait, out of sight, behind it). */
+  showing: boolean
 }
 
 /** The page methods used here. */
@@ -131,7 +133,7 @@ const WEB = /^(https?|file|about|data|blob):/i
  * what it loads only changes when asked (load), never because the address it reports changed.
  */
 export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebView(
-  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll, textSizes },
+  { tab, bottomInset, onState, onProgress, onStartPageLoaded, onMessage, onNewWindow, onScroll, textSizes, showing: onScreen },
   ref
 ) {
   const web = useRef<WebViewInstance>(null)
@@ -149,6 +151,21 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
   /** Start page loads that have failed since you last loaded something, so putting it back can't go round forever. */
   const failures = useRef(0)
   const handed = useRef(0)
+  /** iOS took the page's memory back while it was out of sight: it loads again once it's shown. */
+  const lost = useRef(false)
+
+  useEffect(() => {
+    log('page up for tab', tab.id)
+    return () => log('page gone for tab', tab.id)
+  }, [tab.id])
+
+  useEffect(() => {
+    if (!onScreen || !lost.current) return
+    lost.current = false
+    log('page was reclaimed by iOS; loading it again', tab.id)
+    if (isStartPageUrl(showing.current)) showStartPage()
+    else web.current?.reload()
+  }, [onScreen, tab.id])
 
   /**
    * The start page has no address of its own: it's handed over as a page, with the documents
@@ -239,6 +256,17 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       }}
       // Going back to a start page iOS no longer keeps in memory makes it load the folder;
       // put the page back quietly (twice at most) instead of showing the error.
+      // iOS ended the page's process (usually to get memory back): it would stay blank. Load it
+      // again now if it's showing; otherwise once it's shown, so pages out of sight don't keep
+      // taking the memory straight back.
+      onContentProcessDidTerminate={() => {
+        if (onScreen) {
+          if (isStartPageUrl(showing.current)) showStartPage()
+          else web.current?.reload()
+        } else {
+          lost.current = true
+        }
+      }}
       onError={event => {
         const { url, code } = event.nativeEvent
         log('load failed:', code, url)

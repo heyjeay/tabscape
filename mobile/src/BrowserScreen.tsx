@@ -49,11 +49,13 @@ const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
 const DELIVERY_TRIES = 10
 
 /**
- * How many tabs keep their page live (the one showing and the last ones you were on), so going
- * back to them is instant, where they were, instead of loading again. Each live page costs
- * memory, so older tabs go back to being an address and a picture until you open them.
+ * How many tabs keep their page live: the one showing, the ones either side of it (loaded ahead,
+ * so a swipe lands on a page that's already there), and the last ones you were on. Going back to
+ * any of them is instant, where you left it. Each live page costs memory, so older tabs go back
+ * to being an address and a picture until you open them; if iOS needs the memory back sooner,
+ * the page loads again when you come to it (see TabWebView's onContentProcessDidTerminate).
  */
-const LIVE_TABS = 3
+const LIVE_TABS = 6
 
 /** Run in a page that's no longer showing, so it doesn't keep playing behind the others. */
 const pauseScript = `document.querySelectorAll('video, audio').forEach(function (m) { try { m.pause(); } catch (e) {} }); true;`
@@ -109,12 +111,16 @@ export const BrowserScreen = () => {
   currentIdRef.current = currentId
   const nav = pageStates[currentId] ?? NO_PAGE
 
-  // The tabs with live pages: the one showing first, then the ones you were on before it.
-  const liveIds = useRef<string[]>([])
+  // The tabs you've been on, most recent first.
+  const recent = useRef<string[]>([])
   const exists = (id: string) => tabs.some(t => t.id === id)
-  if (liveIds.current[0] !== currentId || liveIds.current.some(id => !exists(id))) {
-    liveIds.current = [currentId, ...liveIds.current.filter(id => id !== currentId && exists(id))].slice(0, LIVE_TABS)
+  if (recent.current[0] !== currentId || recent.current.some(id => !exists(id))) {
+    recent.current = [currentId, ...recent.current.filter(id => id !== currentId && exists(id))].slice(0, LIVE_TABS)
   }
+  // The tabs with live pages: this one, its neighbours in the swipe row, then the recent ones.
+  const groupAt = group.indexOf(current)
+  const neighbours = [group[groupAt - 1], group[groupAt + 1]].filter(Boolean).map(t => t.id)
+  const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
   // A page you've left stops playing.
@@ -236,10 +242,11 @@ export const BrowserScreen = () => {
       return next
     })
     updateTab(id, { url: state.url, title: state.url ? state.title : 'Start page' })
+    if (!state.loading) uncover(id)
+    // The rest is for the page showing (one loading ahead, out of sight, isn't a visit yet).
+    if (id !== currentIdRef.current) return
     // Into history once it's loaded; never from a private tab.
     if (!state.loading && state.url && !tabs.find(t => t.id === id)?.private) recordVisit(state.url, state.title)
-    if (!state.loading) uncover(id)
-    if (id !== currentIdRef.current) return
     if (refreshing) {
       if (state.loading) reloadSeen.current = true
       else if (reloadSeen.current) setRefreshing(false)
@@ -367,7 +374,6 @@ export const BrowserScreen = () => {
   }
 
   /** Swiping along the bar: the page shrinks into a card and slides, and the next tab's slides in (see TabSwipe). */
-  const groupAt = group.indexOf(current)
   const swipe = useTabSwipe({
     width,
     prev: group[groupAt - 1],
@@ -523,7 +529,10 @@ export const BrowserScreen = () => {
           {restored && live.map(tab => (
             <View
               key={tab.id}
-              style={[StyleSheet.absoluteFill, tab.id !== currentId && styles.hidden]}
+              // Always a real view of its own (never folded into its parent), so showing and
+              // hiding it never moves the page inside, which would load it again.
+              collapsable={false}
+              style={[StyleSheet.absoluteFill, tab.id === currentId ? styles.shown : styles.hidden]}
               pointerEvents={tab.id === currentId ? 'auto' : 'none'}
               accessibilityElementsHidden={tab.id !== currentId}
               importantForAccessibility={tab.id === currentId ? 'auto' : 'no-hide-descendants'}
@@ -534,6 +543,7 @@ export const BrowserScreen = () => {
                   else webs.delete(tab.id)
                 }}
                 tab={tab}
+                showing={tab.id === currentId}
                 bottomInset={finding ? 0 : barRoom - insets.bottom}
                 onState={state => onState(tab.id, state)}
                 onProgress={value => tab.id === currentIdRef.current && setProgress(value)}
@@ -597,6 +607,8 @@ export const BrowserScreen = () => {
           onNewTab={newTab}
           onReopen={reopen}
           swipeHandlers={swipe.handlers}
+          swiping={swipe.swiping}
+          position={groupAt}
           onMenu={() => {
             showBar(true)
             setShowActions(true)
@@ -736,9 +748,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   page: { flex: 1, backgroundColor: '#0c0c12' },
   live: { flex: 1, backgroundColor: colors.background },
-  // Not display: 'none': the new React Native architecture takes such views away altogether,
-  // which throws the page away and loads it again. Invisible and behind, it stays as it was.
-  hidden: { opacity: 0, zIndex: -1 },
+  // Not display: 'none' (the new React Native architecture takes such views away, page and all)
+  // and no zIndex (changing it reorders the views): only seen or not, and touches pass through.
+  hidden: { opacity: 0 },
+  shown: { opacity: 1 },
   card: { borderRadius: SWIPE_RADIUS, overflow: 'hidden' },
   notice: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   noticePill: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 13 },
