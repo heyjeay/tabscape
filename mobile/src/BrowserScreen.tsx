@@ -124,8 +124,11 @@ export const BrowserScreen = () => {
   const lastOn = recent.current
     .map(id => tabs.find(t => t.id === id))
     .filter((t): t is Tab => !!t && t.id !== currentId && !!t.private === isPrivate)
-  const deckFront = lastOn[0] ?? group[groupAt - 1] ?? group[groupAt + 1]
-  const deckBehind = lastOn[1] ?? [group[groupAt - 1], group[groupAt + 1]].find(t => t && t !== deckFront)
+  const fallback = [group[groupAt - 1], group[groupAt + 1]]
+  const deckFor = (from: number) => {
+    const front = lastOn[from] ?? fallback.find(Boolean)
+    return { front, behind: lastOn[from + 1] ?? fallback.find(t => t && t !== front) }
+  }
   const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
@@ -407,6 +410,11 @@ export const BrowserScreen = () => {
       select(tab.id)
     }
   })
+  // While the page you left flies into the tab button, the button keeps the cards it had when you
+  // let go, until it lands.
+  const shownDeck = useRef(deckFor(0))
+  if (!swipe.landing) shownDeck.current = deckFor(0)
+  const deck = shownDeck.current
 
   /** Holding +: the tab you closed last comes back. */
   const reopen = async () => {
@@ -537,7 +545,7 @@ export const BrowserScreen = () => {
         <Animated.View
           ref={page}
           collapsable={false}
-          style={[styles.live, swipe.pageStyle, swipe.swiping && styles.card]}
+          style={[styles.live, swipe.pageStyle, swipe.moving && styles.card]}
         >
           {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first.
               The live pages are all here; only the one showing is drawn. */}
@@ -576,8 +584,6 @@ export const BrowserScreen = () => {
             </Animated.View>
           )}
         </Animated.View>
-        {/* Swiping left: the next tab sliding in over this one with your finger. */}
-        {swipe.incoming}
       </View>
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
@@ -613,9 +619,8 @@ export const BrowserScreen = () => {
       ) : (
         <BottomBar
           tab={current}
-          front={deckFront}
-          behind={deckBehind}
-          hideFront={swipe.flying}
+          front={deck.front}
+          behind={deck.behind}
           tabCount={group.length}
           progress={progress}
           loading={nav.loading}
@@ -626,8 +631,6 @@ export const BrowserScreen = () => {
           onNewTab={newTab}
           onReopen={reopen}
           swipeHandlers={swipe.handlers}
-          swiping={swipe.swiping}
-          position={groupAt}
           onMenu={() => {
             showBar(true)
             setShowActions(true)
