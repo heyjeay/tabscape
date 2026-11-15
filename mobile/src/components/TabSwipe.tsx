@@ -126,6 +126,8 @@ export const useTabSwipe = (options: Options) => {
 
   /** Your finger is on the bar, or a switch is under way: the page has the corners of a card. */
   const [moving, setMoving] = useState(false)
+  /** Your finger is on the bar, swiping (the switch that follows may still be under way after it lifts). */
+  const [dragging, setDragging] = useState(false)
   /** The tab before is out of the tab button (beside the page, or on its way out or back). */
   const [backOut, setBackOut] = useState(false)
   const [flight, setFlight] = useState<Flight | null>(null)
@@ -177,6 +179,8 @@ export const useTabSwipe = (options: Options) => {
   }
 
   const finish = (dx: number, vx: number) => {
+    // The finger's up: the bar goes back to its size now, while the pages finish moving.
+    setDragging(false)
     const { back, next, current } = latest.current
     const towardNext = dx < -SWIPE || vx < -FLICK
     const towardBack = dx > SWIPE || vx > FLICK
@@ -301,6 +305,7 @@ export const useTabSwipe = (options: Options) => {
         latest.current.onStart()
         lastDx.current = 0
         setMoving(true)
+        setDragging(true)
       },
       onPanResponderMove: (_, g) => {
         const { back, next } = latest.current
@@ -390,6 +395,8 @@ export const useTabSwipe = (options: Options) => {
     pageStyle: motion.page,
     /** The page has the corners of a card (your finger is on the bar, or a switch is under way). */
     moving,
+    /** Your finger is on the bar, swiping: the bar is taller while it is. */
+    dragging,
     /** How the tab button should look right now. */
     deck: deckState,
     /** Cards in the air over everything, the bar included: the page you left flying into the tab button, or the tab before coming out of it (or going back). */

@@ -1,7 +1,8 @@
+import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
-  Alert, Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions,
+  Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions,
   type NativeScrollEvent, type NativeSyntheticEvent
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -31,7 +32,11 @@ interface Props {
   registerCard: (id: string, ref: RefObject<ViewRef | null> | null) => void
   onSelect: (id: string, rect: Rect | null) => void
   onClose: (id: string) => void
+  /** Clear All Tabs, from past the last card. */
   onCloseAll: () => void
+  /** Home: a start page. */
+  onHome: () => void
+  /** +: search, then a new tab with what's picked. */
   onNewTab: () => void
   onSettings: () => void
   /** Holding +: the tab closed last comes back. */
@@ -162,12 +167,32 @@ export const TabCarousel = (props: Props) => {
   // Built once: a new one each render would be unhooked and hooked up again natively.
   const widthRef = useRef(cardWidth)
   widthRef.current = cardWidth
+  /**
+   * Past the last card, there's room for one more: swipe on to it and Clear All Tabs comes into
+   * view, with a firm tap when it's there. Swipe back and it goes again.
+   */
+  const count = shown.length
+  const countRef = useRef(count)
+  countRef.current = count
+  const [clearReady, setClearReady] = useState(false)
+  const clearReadyRef = useRef(false)
   const onScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
     useNativeDriver: true,
     listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      middle.current = Math.round(event.nativeEvent.contentOffset.x / widthRef.current)
+      const x = event.nativeEvent.contentOffset.x
+      middle.current = Math.min(Math.round(x / widthRef.current), Math.max(0, countRef.current - 1))
+      const ready = countRef.current > 0 && x >= (countRef.current - 0.5) * widthRef.current
+      if (ready !== clearReadyRef.current) {
+        clearReadyRef.current = ready
+        setClearReady(ready)
+        if (ready) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {})
+      }
     }
   }), [scrollX])
+  const clearReveal = useMemo(
+    () => scrollX.interpolate({ inputRange: [Math.max(0, count - 1) * cardWidth, count * cardWidth], outputRange: [0, 1], extrapolate: 'clamp' }),
+    [scrollX, count, cardWidth]
+  )
 
   // Opening, this tab's picture flies from the tab button into the middle card, drawn over
   // everything. The next card overlaps the middle one's right edge in front of it, so while the
@@ -190,12 +215,6 @@ export const TabCarousel = (props: Props) => {
     close: id => closeRef.current(id)
   }), [])
 
-  const confirmCloseAll = () =>
-    Alert.alert(props.isPrivate ? 'Close all private tabs?' : 'Close all tabs?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: `Close all ${shown.length} ${props.isPrivate ? 'private ' : ''}tabs`, style: 'destructive', onPress: props.onCloseAll }
-    ])
-
   return (
     <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: appear }]}>
@@ -212,8 +231,8 @@ export const TabCarousel = (props: Props) => {
         style={{ position: 'absolute', top: insets.top + SWITCH, left: 0, right: 0, height: area, opacity: appear }}
         // Every card is laid out in the same spot and moved to its own place by animation, so
         // taking one away changes no layout (which would jump): the others glide into the gap.
-        // Room to bring the last card to the middle, and no further.
-        contentContainerStyle={{ width: Math.max(0, shown.length - 1) * cardWidth + width, height: area }}
+        // Room to bring the last card to the middle, and one place more, for Clear All Tabs.
+        contentContainerStyle={{ width: (count ? count * cardWidth : 0) + width, height: area }}
         scrollEventThrottle={16}
         onScroll={onScroll}
       >
@@ -235,6 +254,34 @@ export const TabCarousel = (props: Props) => {
           />
         ))}
       </Animated.ScrollView>
+
+      {/* Clear All Tabs, past the last card: it grows into the middle as you swipe on to it. */}
+      {count > 0 && (
+        <Animated.View
+          pointerEvents={clearReady ? 'box-none' : 'none'}
+          style={[styles.clear, {
+            top: insets.top + SWITCH + cardTop,
+            left: side,
+            width: cardWidth,
+            height: cardHeight,
+            opacity: clearReveal,
+            transform: [{ scale: clearReveal.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }]
+          }]}
+        >
+          <Pressable
+            onPress={props.onCloseAll}
+            style={({ pressed }) => [styles.clearButton, pressed && styles.clearPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear all ${count} ${props.isPrivate ? 'private ' : ''}tabs`}
+          >
+            <View style={styles.clearCircle}>
+              <Icon sf="trash.fill" fallback="trash" size={34} color="#fff" weight="semibold" />
+            </View>
+            <Text style={styles.clearTitle}>Clear All Tabs</Text>
+            <Text style={styles.clearCount}>{count} {props.isPrivate ? 'private ' : ''}tab{count === 1 ? '' : 's'} · hold + to reopen</Text>
+          </Pressable>
+        </Animated.View>
+      )}
 
       {!shown.length && (
         <Animated.View pointerEvents="none" style={[styles.empty, { top: insets.top + SWITCH, height: area, opacity: appear }]}>
@@ -278,7 +325,7 @@ export const TabCarousel = (props: Props) => {
           transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) }]
         }]}
       >
-        <RoundButton sf="trash" fallback="trash-outline" label="Close all tabs" onPress={() => shown.length && confirmCloseAll()} />
+        <RoundButton sf="house" fallback="home-outline" label="Home" onPress={props.onHome} />
         <Pressable
           onPress={props.onNewTab}
           onLongPress={props.onReopen}
@@ -435,6 +482,15 @@ const styles = StyleSheet.create({
   switchText: { color: colors.secondary, fontSize: 14, fontWeight: '600' },
   switchTextOn: { color: colors.text },
   empty: { position: 'absolute', left: 40, right: 40, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  clear: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  clearButton: { alignItems: 'center', gap: 10, padding: 24, borderRadius: 32 },
+  clearPressed: { transform: [{ scale: 0.94 }] },
+  clearCircle: {
+    width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff453a',
+    shadowColor: '#ff453a', shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }
+  },
+  clearTitle: { color: colors.text, fontSize: 20, fontWeight: '700', marginTop: 6 },
+  clearCount: { color: colors.secondary, fontSize: 14 },
   emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
   emptyText: { color: colors.secondary, fontSize: 15, lineHeight: 21, textAlign: 'center' },
   round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },

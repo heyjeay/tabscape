@@ -17,6 +17,8 @@ interface Props {
   onClose: () => void
   /** In a private tab, searches aren't remembered. */
   isPrivate?: boolean
+  /** The keyboard comes up at once (Auto-Open Keyboard); otherwise a tap on the field brings it. */
+  keyboard?: boolean
 }
 
 /** A row under the field: a page from your history, a suggestion, or a recent search. */
@@ -33,7 +35,7 @@ const MAX_ROWS = 5
  * and rides on top of it. Suggestions appear under the field as you type; your recent searches
  * when it's empty. A tap on the dimmed page closes it.
  */
-export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Props) => {
+export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyboard = true }: Props) => {
   const insets = useSafeAreaInsets()
   const [mounted, setMounted] = useState(visible)
   const [text, setText] = useState(initial)
@@ -146,7 +148,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Pr
               placeholder="Search..."
               placeholderTextColor={colors.secondary}
               style={styles.input}
-              autoFocus
+              autoFocus={keyboard}
               selectTextOnFocus
               keyboardType="web-search"
               returnKeyType="go"

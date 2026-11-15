@@ -72,7 +72,8 @@ export const BottomBar = ({
   // (moved, not resized, so nothing else on screen shifts), with the dots fading in on it.
   const grow = useRef(new Animated.Value(0)).current
   useEffect(() => {
-    Animated.spring(grow, { toValue: swiping ? 1 : 0, useNativeDriver: true, speed: 20, bounciness: swiping ? 6 : 0 }).start()
+    // Back down quickly when the finger lifts: the bar is the thing you reach for next.
+    Animated.spring(grow, { toValue: swiping ? 1 : 0, useNativeDriver: true, speed: swiping ? 20 : 30, bounciness: swiping ? 6 : 0 }).start()
   }, [swiping, grow])
   const rise = useRef(grow.interpolate({ inputRange: [0, 1], outputRange: [GROW, 0] })).current
   return (

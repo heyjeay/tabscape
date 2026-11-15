@@ -664,24 +664,50 @@ export const BrowserScreen = () => {
     else deliver(currentId)
   }
 
+  /**
+   * Where a search goes: this page (editing its address), or a new tab (+), which only opens
+   * once you've searched or picked something; and whether that's a private tab.
+   */
+  const searchFor = useRef<{ newTab: boolean; private: boolean }>({ newTab: false, private: false })
+  const [searchKeyboard, setSearchKeyboard] = useState(true)
   const search = (from: string) => {
+    searchFor.current = { newTab: false, private: isPrivate }
+    setSearchKeyboard(true)
     setSearchFrom(from)
     setSearching(true)
   }
 
-  /** A new tab has opened: search comes up over it, unless Auto-Open Keyboard is off. */
-  const searchIfWanted = () => {
-    loadSettings().then(settings => {
-      if (settings.autoKeyboard) search('')
-    })
+  /**
+   * + : search, over the page you're on, as in Arc. A new tab opens with what you pick (on a start
+   * page, that tab is used: it was waiting for somewhere to go). The keyboard comes up at once
+   * unless Auto-Open Keyboard is off.
+   */
+  const newTab = (asPrivate = isPrivate) => {
+    showBar(true)
+    searchFor.current = { newTab: true, private: asPrivate }
+    setSearchFrom('')
+    setSearching(true)
+    loadSettings().then(settings => setSearchKeyboard(settings.autoKeyboard))
   }
 
-  /** + : a new tab on the start page, with search up over it. */
-  const newTab = () => {
-    showBar(true)
-    snapshot()
-    openTab(null, { private: isPrivate })
-    searchIfWanted()
+  /** What a search picked: on this page, or in a new tab. */
+  const go = (url: string) => {
+    const { newTab: inNewTab, private: asPrivate } = searchFor.current
+    searchFor.current = { newTab: false, private: false }
+    if (inNewTab && (current.url || !!current.private !== asPrivate)) {
+      snapshot()
+      openTab(url, { private: asPrivate })
+    } else {
+      web.current?.load(url)
+    }
+  }
+
+  /** Home, from the tab browser: a start page (one that's open already and empty, or a new one). */
+  const goHome = (asPrivate: boolean) => {
+    const waiting = tabs.find(t => !t.url && !!t.private === asPrivate)
+    if (waiting) select(waiting.id)
+    else openTab(null, { private: asPrivate })
+    fadeOutTabs()
   }
 
   /** Export Data: the open tabs' addresses (not private ones), one a line, to share. */
@@ -849,10 +875,10 @@ export const BrowserScreen = () => {
           hide={barHide}
           stackRef={stack}
           onTabs={openTabs}
-          onNewTab={newTab}
+          onNewTab={() => newTab()}
           onReopen={reopen}
           swipeHandlers={swipe.handlers}
-          swiping={swipe.moving}
+          swiping={swipe.dragging}
           position={groupAt}
           onMenu={() => {
             showBar(true)
@@ -925,13 +951,16 @@ export const BrowserScreen = () => {
           onSelect={openFromCard}
           onClose={closeTab}
           onCloseAll={() => {
+            const count = tabs.filter(t => !!t.private === browsingPrivate).length
             closeAll(browsingPrivate)
             fadeOutTabs()
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+            setNotice({ text: `Closed ${count} tab${count === 1 ? '' : 's'}. Hold + to reopen`, info: true })
           }}
+          onHome={() => goHome(browsingPrivate)}
           onNewTab={() => {
-            openTab(null, { private: browsingPrivate })
             fadeOutTabs()
-            searchIfWanted()
+            newTab(browsingPrivate)
           }}
           onSettings={() => {
             fadeOutTabs()
@@ -943,9 +972,10 @@ export const BrowserScreen = () => {
       <SearchOverlay
         visible={searching}
         initial={searchFrom}
-        onGo={url => web.current?.load(url)}
+        onGo={go}
         onClose={() => setSearching(false)}
-        isPrivate={isPrivate}
+        isPrivate={searchFor.current.newTab ? searchFor.current.private : isPrivate}
+        keyboard={searchKeyboard}
       />
 
       <HistorySheet
