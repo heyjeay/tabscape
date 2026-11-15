@@ -11,6 +11,7 @@ import WebKit
  *   iOS switching apps. A second swipe straight after still switches apps, as iOS always allows.
  * - Ad and tracker blocking in its pages, with WebKit's own content blocker (as Safari's
  *   blockers use): well-known ad and tracking networks aren't loaded by other sites' pages.
+ * - Links to websites stay in the browser, even for sites whose app is installed.
  */
 public class TabscapeNativeModule: Module {
   public func definition() -> ModuleDefinition {
@@ -20,6 +21,7 @@ public class TabscapeNativeModule: Module {
       DispatchQueue.main.async {
         EdgeSwipes.install()
         ContentBlocker.shared.start()
+        AppLinks.install()
       }
     }
 
@@ -41,6 +43,38 @@ public class TabscapeNativeModule: Module {
     Function("blockedNetworkCount") { () -> Int in
       ContentBlocker.domains.count
     }
+  }
+}
+
+/**
+ * Websites open in the browser, not in their apps. In an app's web view, iOS sends a tap on a link
+ * to a site whose app is installed (a universal link: youtube.com, reddit.com…) to that app. A
+ * browser asks WebKit to allow the page without trying the app instead, as Chrome and Firefox do
+ * on iPhone: WebKit's "allow, without trying app links" (allow + 2). react-native-webview decides
+ * each navigation in RNCWebViewImpl; when it allows a website, that's what WebKit is told.
+ * (Other apps' own addresses, like youtube://, are asked about in the app: lib/handOff.)
+ */
+enum AppLinks {
+  private static var installed = false
+
+  static func install() {
+    guard !installed, let page = NSClassFromString("RNCWebViewImpl") else { return }
+    let selector = NSSelectorFromString("webView:decidePolicyForNavigationAction:decisionHandler:")
+    guard let method = class_getInstanceMethod(page, selector) else { return }
+    installed = true
+    typealias Decide = @convention(block) (WKNavigationActionPolicy) -> Void
+    typealias Original = @convention(c) (AnyObject, Selector, WKWebView, WKNavigationAction, Decide) -> Void
+    let original = unsafeBitCast(method_getImplementation(method), to: Original.self)
+    let withoutApps = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
+    let replacement: @convention(block) (AnyObject, WKWebView, WKNavigationAction, @escaping Decide) -> Void = { this, webView, action, decide in
+      let scheme = action.request.url?.scheme?.lowercased()
+      let website = scheme == "http" || scheme == "https"
+      let decideHere: Decide = { policy in
+        decide(policy == .allow && website ? withoutApps : policy)
+      }
+      original(this, selector, webView, action, decideHere)
+    }
+    method_setImplementation(method, imp_implementationWithBlock(replacement))
   }
 }
 
