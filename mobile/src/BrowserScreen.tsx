@@ -27,7 +27,7 @@ import { hostOf } from './lib/address'
 import { parseColor, usableAccent } from './lib/color'
 import { recordVisit } from './lib/history'
 import { keepPicture } from './lib/pictures'
-import { iconFor, iconKey, loadSavedIcons, onIcon } from './lib/icons'
+import { iconFor, iconKey, iconsFromPage, loadSavedIcons, onIcon } from './lib/icons'
 import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
@@ -359,6 +359,20 @@ export const BrowserScreen = () => {
       log('start page asked for', data.hosts.length, 'icons;', Object.keys(icons).length, 'saved, e.g.', iconKey(String(data.hosts[0] ?? '')))
       return
     }
+    // A web page's icons (any tab's): the sharpest is kept for its site, if better than what's saved.
+    if (data.type === 'pageIcons' && Array.isArray(data.links)) {
+      // Only for the site the tab really has open, whatever the page says it is.
+      const open = tabs.find(t => t.id === id)?.url
+      const said = String(data.url ?? '')
+      try {
+        if (open && new URL(open).host === new URL(said).host) {
+          iconsFromPage(open, data.links.filter((l): l is { rel: string; href: string; sizes: string } => !!l && typeof l === 'object'))
+        }
+      } catch {
+        // Not an address.
+      }
+      return
+    }
     // The rest is about what you're doing, on the page showing.
     if (id !== currentIdRef.current) return
     if (data.type === 'find') setNotFound(!data.found)
@@ -560,7 +574,11 @@ export const BrowserScreen = () => {
       timer = setTimeout(() => {
         const batch = found
         found = {}
-        if (live) setIcons(all => ({ ...all, ...batch }))
+        if (!live) return
+        setIcons(all => ({ ...all, ...batch }))
+        // Start pages already open have them at once too (a better icon replaces the one they show).
+        const hand = `if (location.protocol === 'file:' && window.tabscapeIcons) window.tabscapeIcons(${JSON.stringify(batch)}); true;`
+        webs.forEach(web => web.inject(hand))
       }, 800)
     })
     return () => {
@@ -568,7 +586,7 @@ export const BrowserScreen = () => {
       clearTimeout(timer)
       stop()
     }
-  }, [])
+  },[webs])
 
   // Ad and tracker blocking, as last set (it's on unless switched off in Settings).
   useEffect(() => {

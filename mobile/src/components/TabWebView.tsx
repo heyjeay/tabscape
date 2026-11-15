@@ -127,6 +127,22 @@ const linkPressScript = `(function () {
   }, true);
 })();`
 
+/**
+ * Run in each web page once it's loaded: tell the app the icons it names (home-screen icons,
+ * favicons, its web app manifest), so the start page's tile for it can have the sharpest.
+ * The page was loaded by the browser, so shops' bot checks never stand in the way, as they can
+ * when the app asks a homepage itself. Not on the start page.
+ */
+const pageIconsScript = `(function () {
+  try {
+    if (!/^https?:$/.test(location.protocol)) return;
+    var links = Array.prototype.slice.call(document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel^="apple-touch-icon"], link[rel="manifest"]'), 0, 30)
+      .map(function (l) { return { rel: l.rel || '', href: l.href || '', sizes: l.getAttribute('sizes') || '' }; })
+      .filter(function (l) { return /^https?:/.test(l.href); });
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pageIcons', url: location.href, links: links }));
+  } catch (e) {}
+})(); true;`
+
 /** Schemes the page itself handles; anything else (tel:, mailto:, app links) goes to iOS. */
 const WEB = /^(https?|file|about|data|blob):/i
 
@@ -229,6 +245,8 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
     }
   }
 
+  const afterLoad = `${accentScript}${pageIconsScript}`
+
   const atStart = useMemo(() => {
     // Only the start page (a local page) is told where the saved icons are.
     const known = `if (location.protocol === 'file:') window.tabscapeKnownIcons = ${JSON.stringify(icons)};`
@@ -286,7 +304,7 @@ export const TabWebView = forwardRef<TabWebViewHandle, Props>(function TabWebVie
       }}
       onMessage={message}
       // Each page reports its accent colour once it has loaded (onMessage must be set for it to run).
-      injectedJavaScript={accentScript}
+      injectedJavaScript={afterLoad}
       injectedJavaScriptBeforeContentLoaded={atStart}
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
