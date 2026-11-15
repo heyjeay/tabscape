@@ -1,0 +1,42 @@
+# What EAS Build leaves out when it uploads the Tabscape iPhone app (mobile/) to build in the cloud.
+# With this file there, EAS uses it instead of the .gitignore files, so it repeats their rules,
+# except one: it keeps mobile/src/startpage.generated.ts (the start page built into the app by
+# `npm run build:mobile`), which git ignores but the app can't be built without.
+# Keep this in step with .gitignore and mobile/.gitignore.
+
+# From .gitignore
+node_modules
+dist
+*.local
+backups
+dist-extension
+store/*.zip
+dist-site
+dist-firefox
+brag-output/
+brag-output-*/
+
+# From mobile/.gitignore
+mobile/.expo/
+mobile/web-build/
+mobile/expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env*.local
+*.tsbuildinfo
+mobile/ios
+mobile/android
+
+# Local Claude Code settings: nothing to do with the app
+.claude/
