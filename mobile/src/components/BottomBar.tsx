@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur'
 import { GlassView } from 'expo-glass-effect'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useEffect, useRef, type RefObject } from 'react'
-import { Animated, Easing, PanResponder, Pressable, StyleSheet, View } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, View, type GestureResponderHandlers } from 'react-native'
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass, liquidGlass } from './Glass'
@@ -27,37 +27,8 @@ interface Props {
   /** Holding +: the tab closed last comes back. */
   onReopen: () => void
   onMenu: () => void
-  /** A swipe along the bar: to the next tab (swiped left) or the one before (swiped right). */
-  onSwipe: (next: boolean) => void
-}
-
-/** How far (points) or how fast a swipe along the bar has to go to change tabs. */
-const SWIPE = 50
-const FLICK = 0.5
-
-/**
- * Swiping along the bar moves to the next or previous tab, like Arc and Safari. The buttons
- * follow your finger a little, then spring back; past the last tab they only stretch.
- */
-const useSwipe = (onSwipe: Props['onSwipe']) => {
-  const slide = useRef(new Animated.Value(0)).current
-  const latest = useRef(onSwipe)
-  latest.current = onSwipe
-  const swipe = useRef(
-    PanResponder.create({
-      // Sideways only, so taps on the buttons still work.
-      onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderMove: (_, g) => slide.setValue(g.dx * 0.35),
-      onPanResponderRelease: (_, g) => {
-        const far = Math.abs(g.dx) > SWIPE || Math.abs(g.vx) > FLICK
-        if (far) latest.current(g.dx < 0)
-        Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 6 }).start()
-      },
-      onPanResponderTerminate: () => Animated.spring(slide, { toValue: 0, useNativeDriver: true }).start()
-    })
-  ).current
-  return { slide, handlers: swipe.panHandlers }
+  /** Swiping along the bar changes tabs (see TabSwipe): its touch handlers. */
+  swipeHandlers: GestureResponderHandlers
 }
 
 /** Arc's sizes, measured from its bar (points): the row of buttons, and the space above it. */
@@ -78,14 +49,13 @@ export const barTravel = barSpace
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
 export const BottomBar = ({
-  tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, onSwipe
+  tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers
 }: Props) => {
   // A private tab's bar is a plain deep violet whatever the site, so you can tell at a glance.
   const accent = tab.private ? PRIVATE : (tab.accent ?? DEFAULT_ACCENT)
-  const { slide, handlers } = useSwipe(onSwipe)
   return (
   <Animated.View
-    {...handlers}
+    {...swipeHandlers}
     style={[styles.bar, { paddingBottom: bottomPad(bottomInset), transform: [{ translateY: hide }] }]}
   >
     {/*
@@ -121,7 +91,7 @@ export const BottomBar = ({
 
     {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
     <ProgressLine progress={progress} loading={loading} accent={accent} />
-    <Animated.View style={[styles.row, { transform: [{ translateX: slide }] }]}>
+    <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} ${tab.private ? 'private ' : ''}tabs`} hitSlop={10} style={styles.side}>
         <TabStack tab={tab} behind={behind} frontRef={stackRef} />
         {tab.private && (
@@ -144,7 +114,7 @@ export const BottomBar = ({
           </Glass>
         </Pressable>
       </View>
-    </Animated.View>
+    </View>
   </Animated.View>
   )
 }

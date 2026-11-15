@@ -19,6 +19,8 @@ import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsSheet } from './components/SettingsSheet'
 import { TabCarousel } from './components/TabCarousel'
 import { TopEdge } from './components/TopEdge'
+import { TabPicture } from './components/TabPicture'
+import { SWIPE_RADIUS, useTabSwipe } from './components/TabSwipe'
 import { TabWebView, type PageState, type TabWebViewHandle } from './components/TabWebView'
 import { colors, log } from './config'
 import { hostOf } from './lib/address'
@@ -30,7 +32,7 @@ import {
 } from './lib/savedPages'
 import { loadSettings } from './lib/settings'
 import { stepSize, textSizeScript, useTextSizes } from './lib/sites'
-import { useTabs } from './useTabs'
+import { useTabs, type Tab } from './useTabs'
 
 /** Pull-to-refresh steps: past each distance (points), a tap, getting stronger. */
 const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
@@ -47,6 +49,18 @@ const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
 const DELIVERY_TRIES = 10
 
 /**
+ * How many tabs keep their page live (the one showing and the last ones you were on), so going
+ * back to them is instant, where they were, instead of loading again. Each live page costs
+ * memory, so older tabs go back to being an address and a picture until you open them.
+ */
+const LIVE_TABS = 3
+
+/** Run in a page that's no longer showing, so it doesn't keep playing behind the others. */
+const pauseScript = `document.querySelectorAll('video, audio').forEach(function (m) { try { m.pause(); } catch (e) {} }); true;`
+
+const NO_PAGE: PageState = { url: null, title: '', canGoBack: false, canGoForward: false, loading: false }
+
+/**
  * The browser: the current tab's page edge to edge, Arc's floating bar over it, and the layers
  * it opens over the page (tab browser, ⌃ sheet, search), which animate the way Arc's do.
  */
@@ -59,7 +73,10 @@ export const BrowserScreen = () => {
   /** The tabs of the same kind as the one showing (private or not): what the bar swipes through. */
   const group = tabs.filter(t => !!t.private === isPrivate)
   const textSize = sizeFor(current.url, isPrivate)
-  const web = useRef<TabWebViewHandle>(null)
+  /** Each live tab's page. */
+  const webs = useRef(new Map<string, TabWebViewHandle>()).current
+  /** The page showing. */
+  const web = { get current() { return webs.get(currentIdRef.current) ?? null } }
   const page = useRef<ComponentRef<typeof View>>(null)
   const stack = useRef<ComponentRef<typeof View>>(null)
   const hero = useHero()
@@ -67,7 +84,8 @@ export const BrowserScreen = () => {
   const shrink = useHero()
   const cards = useRef(new Map<string, RefObject<ViewRef | null>>()).current
 
-  const [nav, setNav] = useState({ canGoBack: false, canGoForward: false, loading: false })
+  /** What each live page last said about itself (back, forward, loading); the one showing drives the bar. */
+  const [pageStates, setPageStates] = useState<Record<string, PageState>>({})
   const [progress, setProgress] = useState(0)
   const [tabsOpen, setTabsOpen] = useState(false)
   const [hiddenCards, setHiddenCards] = useState<string[]>([])
@@ -89,6 +107,22 @@ export const BrowserScreen = () => {
   const deliveryTries = useRef(0)
   const currentIdRef = useRef(currentId)
   currentIdRef.current = currentId
+  const nav = pageStates[currentId] ?? NO_PAGE
+
+  // The tabs with live pages: the one showing first, then the ones you were on before it.
+  const liveIds = useRef<string[]>([])
+  const exists = (id: string) => tabs.some(t => t.id === id)
+  if (liveIds.current[0] !== currentId || liveIds.current.some(id => !exists(id))) {
+    liveIds.current = [currentId, ...liveIds.current.filter(id => id !== currentId && exists(id))].slice(0, LIVE_TABS)
+  }
+  const live = tabs.filter(t => liveIds.current.includes(t.id))
+
+  // A page you've left stops playing.
+  const shownBefore = useRef(currentId)
+  useEffect(() => {
+    if (shownBefore.current !== currentId) webs.get(shownBefore.current)?.inject(pauseScript)
+    shownBefore.current = currentId
+  }, [currentId, webs])
   const tabsAppear = useRef(new Animated.Value(0)).current
   const growing = useRef(false)
 
@@ -193,46 +227,60 @@ export const BrowserScreen = () => {
     }
   }
 
-  const onState = (state: PageState) => {
-    setNav({ canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading })
+  /** A live page (showing or not) says where it is and whether it's loading. */
+  const onState = (id: string, state: PageState) => {
+    // Kept for the live pages only, so closed tabs don't pile up here.
+    setPageStates(all => {
+      const next: Record<string, PageState> = { [id]: state }
+      for (const other of liveIds.current) if (other !== id && all[other]) next[other] = all[other]
+      return next
+    })
+    updateTab(id, { url: state.url, title: state.url ? state.title : 'Start page' })
+    // Into history once it's loaded; never from a private tab.
+    if (!state.loading && state.url && !tabs.find(t => t.id === id)?.private) recordVisit(state.url, state.title)
+    if (!state.loading) uncover(id)
+    if (id !== currentIdRef.current) return
     if (refreshing) {
       if (state.loading) reloadSeen.current = true
       else if (reloadSeen.current) setRefreshing(false)
     }
-    updateTab(currentId, { url: state.url, title: state.url ? state.title : 'Start page' })
-    // Into history once it's loaded; never from a private tab.
-    if (!state.loading && state.url && !isPrivate) recordVisit(state.url, state.title)
     // A picture once it's drawn. A page reports several times as it finishes, so only the last
     // of those takes one; tied to this tab, in case another is showing by then.
     clearTimeout(pictureTimer.current)
-    const id = currentId
     if (!state.loading) pictureTimer.current = setTimeout(() => id === currentIdRef.current && snapshot(id), 400)
   }
   const pictureTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(pictureTimer.current), [])
 
   /** A start page is up: offer it anything waiting (saved pages, a backup to import). */
-  const deliver = async () => {
+  const deliver = async (id: string) => {
     const [pages, backup] = await Promise.all([loadSavedPages(), loadPendingImport()])
-    if (pages.length || backup) web.current?.inject(deliveryScript(pages, backup))
+    if (pages.length || backup) webs.get(id)?.inject(deliveryScript(pages, backup))
   }
 
-  const onMessage = async (data: { type: string; [key: string]: unknown }) => {
+  const onMessage = async (id: string, data: { type: string; [key: string]: unknown }) => {
+    if (data.type === 'accent') updateTab(id, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
+    if (data.type === 'delivered') return delivered(id, data)
+    // The rest is about what you're doing, on the page showing.
+    if (id !== currentIdRef.current) return
     if (data.type === 'find') setNotFound(!data.found)
     // Your finger came off the page while it was pulled down past its top.
     if (data.type === 'released') refresh()
-    if (data.type === 'accent') updateTab(currentId, { accent: usableAccent(parseColor(String(data.color ?? ''))) })
     if (data.type === 'linkPress') linkMenu(String(data.url), String(data.text ?? ''), typeof data.image === 'string' ? data.image : null)
     if (data.type === 'reader') {
       const found = parseArticle(data)
       if (found) setArticle(found)
       else setNotice({ text: 'No article to read on this page', info: true })
     }
-    if (data.type === 'delivered') {
+  }
+
+  /** A start page says what it took in. */
+  const delivered = async (id: string, data: { [key: string]: unknown }) => {
+    {
       const taken = Number(data.taken)
       if (taken < 0) {
         // The start page is still starting up: try again shortly.
-        if (++deliveryTries.current < DELIVERY_TRIES) setTimeout(deliver, 500)
+        if (++deliveryTries.current < DELIVERY_TRIES) setTimeout(() => deliver(id), 500)
         return
       }
       deliveryTries.current = 0
@@ -306,18 +354,38 @@ export const BrowserScreen = () => {
     }
   }
 
-  /** Swiping along the bar: the next tab, or the one before, of the same kind. */
-  const swipeTab = async (next: boolean) => {
-    const target = group[group.indexOf(current) + (next ? 1 : -1)]
-    if (!target) {
-      // The end of the row: a soft tap, and nothing moves.
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
-      return
-    }
-    Haptics.selectionAsync()
-    await snapshot()
-    select(target.id)
+  // A tab without a live page loads again when you go to it; until it's drawn, its picture
+  // stands in, so a swipe lands on the page you saw rather than on an empty one.
+  const [cover, setCover] = useState<Tab | null>(null)
+  const coverRef = useRef(cover)
+  coverRef.current = cover
+  const coverFade = useRef(new Animated.Value(1)).current
+  const uncover = (id: string) => {
+    if (coverRef.current?.id !== id) return
+    coverRef.current = null
+    Animated.timing(coverFade, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setCover(null))
   }
+
+  /** Swiping along the bar: the page shrinks into a card and slides, and the next tab's slides in (see TabSwipe). */
+  const groupAt = group.indexOf(current)
+  const swipe = useTabSwipe({
+    width,
+    prev: group[groupAt - 1],
+    next: group[groupAt + 1],
+    currentId,
+    onStart: () => {
+      showBar(true)
+      snapshot()
+    },
+    onSwitch: tab => {
+      if (!liveIds.current.includes(tab.id) && tab.url && tab.thumbnail) {
+        coverFade.setValue(1)
+        setCover(tab)
+        setTimeout(() => uncover(tab.id), 2500)
+      }
+      select(tab.id)
+    }
+  })
 
   /** Holding +: the tab you closed last comes back. */
   const reopen = async () => {
@@ -354,7 +422,7 @@ export const BrowserScreen = () => {
   const importQueued = () => {
     setShowSettings(false)
     if (current.url) openTab()
-    else deliver()
+    else deliver(currentId)
   }
 
   const search = (from: string) => {
@@ -442,21 +510,41 @@ export const BrowserScreen = () => {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
-      <View ref={page} style={styles.page} collapsable={false}>
-        {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first. */}
-        {restored && <TabWebView
-          key={current.id}
-          ref={web}
-          tab={current}
-          bottomInset={finding ? 0 : barRoom - insets.bottom}
-          onState={onState}
-          onProgress={setProgress}
-          onStartPageLoaded={deliver}
-          onMessage={onMessage}
-          onNewWindow={url => openTab(url, { private: isPrivate })}
-          onScroll={onScroll}
-          textSizes={sizesFor(isPrivate)}
-        />}
+      <View style={styles.page}>
+        {/* While swiping between tabs: the tabs either side, as cards beside this one. */}
+        {swipe.sides}
+        <Animated.View
+          ref={page}
+          collapsable={false}
+          style={[styles.live, swipe.pageStyle, swipe.swiping && styles.card]}
+        >
+          {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first.
+              The live pages are all here; only the one showing is drawn. */}
+          {restored && live.map(tab => (
+            <View key={tab.id} style={[StyleSheet.absoluteFill, tab.id !== currentId && styles.hidden]}>
+              <TabWebView
+                ref={handle => {
+                  if (handle) webs.set(tab.id, handle)
+                  else webs.delete(tab.id)
+                }}
+                tab={tab}
+                bottomInset={finding ? 0 : barRoom - insets.bottom}
+                onState={state => onState(tab.id, state)}
+                onProgress={value => tab.id === currentIdRef.current && setProgress(value)}
+                onStartPageLoaded={() => deliver(tab.id)}
+                onMessage={data => onMessage(tab.id, data)}
+                onNewWindow={url => openTab(url, { private: !!tab.private })}
+                onScroll={(y, contentHeight, viewHeight) => tab.id === currentIdRef.current && onScroll(y, contentHeight, viewHeight)}
+                textSizes={sizesFor(!!tab.private)}
+              />
+            </View>
+          ))}
+          {cover && cover.id === currentId && (
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: coverFade }]}>
+              <TabPicture tab={cover} letterSize={72} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+          )}
+        </Animated.View>
       </View>
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
@@ -502,7 +590,7 @@ export const BrowserScreen = () => {
           onTabs={openTabs}
           onNewTab={newTab}
           onReopen={reopen}
-          onSwipe={swipeTab}
+          swipeHandlers={swipe.handlers}
           onMenu={() => {
             showBar(true)
             setShowActions(true)
@@ -640,7 +728,10 @@ export const BrowserScreen = () => {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1, backgroundColor: colors.background },
+  page: { flex: 1, backgroundColor: '#0c0c12' },
+  live: { flex: 1, backgroundColor: colors.background },
+  hidden: { display: 'none' },
+  card: { borderRadius: SWIPE_RADIUS, overflow: 'hidden' },
   notice: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   noticePill: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 13 },
   noticeText: { color: colors.text, fontSize: 16, fontWeight: '600' }
