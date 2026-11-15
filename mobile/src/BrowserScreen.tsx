@@ -631,6 +631,8 @@ export const BrowserScreen = () => {
           onNewTab={newTab}
           onReopen={reopen}
           swipeHandlers={swipe.handlers}
+          swiping={swipe.moving}
+          position={groupAt}
           onMenu={() => {
             showBar(true)
             setShowActions(true)

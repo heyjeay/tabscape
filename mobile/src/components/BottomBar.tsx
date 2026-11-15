@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur'
 import { GlassView } from 'expo-glass-effect'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useEffect, useRef, type RefObject } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, View, type GestureResponderHandlers } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, Text, View, type GestureResponderHandlers } from 'react-native'
 import { css, DEFAULT_ACCENT, mix, type Rgb } from '../lib/color'
 import type { Tab } from '../useTabs'
 import { Glass, liquidGlass } from './Glass'
@@ -33,7 +33,14 @@ interface Props {
   onMenu: () => void
   /** Swiping along the bar changes tabs (see TabSwipe): its touch handlers. */
   swipeHandlers: GestureResponderHandlers
+  /** Your finger is on the bar, swiping between tabs: the bar grows taller, with a dot for each tab. */
+  swiping: boolean
+  /** This tab's place among the tabs you swipe through (from 0). */
+  position: number
 }
+
+/** How much taller the bar grows while you swipe (points). */
+const GROW = 30
 
 /** Arc's sizes, measured from its bar (points): the row of buttons, and the space above it. */
 const ROW = 46
@@ -53,10 +60,18 @@ export const barTravel = barSpace
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
 export const BottomBar = ({
-  tab, front, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers
+  tab, front, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers,
+  swiping, position
 }: Props) => {
   // A private tab's bar is a plain deep violet whatever the site, so you can tell at a glance.
   const accent = tab.private ? PRIVATE : (tab.accent ?? DEFAULT_ACCENT)
+  // Growing taller: the panel behind the buttons is GROW taller than the bar and rises into view
+  // (moved, not resized, so nothing else on screen shifts), with the dots fading in on it.
+  const grow = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    Animated.spring(grow, { toValue: swiping ? 1 : 0, useNativeDriver: true, speed: 20, bounciness: swiping ? 6 : 0 }).start()
+  }, [swiping, grow])
+  const rise = useRef(grow.interpolate({ inputRange: [0, 1], outputRange: [GROW, 0] })).current
   return (
   <Animated.View
     {...swipeHandlers}
@@ -66,7 +81,7 @@ export const BottomBar = ({
       The panel: iOS 26 Liquid Glass tinted with the site's colour, with that colour deepening
       towards the bottom, like Arc. Without Liquid Glass: frosted charcoal warming into the colour.
     */}
-    <View style={styles.panel} pointerEvents="none">
+    <Animated.View style={[styles.panel, { transform: [{ translateY: rise }] }]} pointerEvents="none">
       {liquidGlass ? (
         <>
           <GlassView
@@ -91,7 +106,8 @@ export const BottomBar = ({
           />
         </>
       )}
-    </View>
+    </Animated.View>
+    <Place position={position} count={tabCount} shown={grow} rise={rise} />
 
     {/* The loading line along the top edge: the site's colour running into blue, glowing a little. */}
     <ProgressLine progress={progress} loading={loading} accent={accent} />
@@ -122,6 +138,22 @@ export const BottomBar = ({
   </Animated.View>
   )
 }
+
+/** More dots than this would be too small to tell apart: then it says "3 of 14". */
+const MAX_DOTS = 12
+
+/** Where you are in the row of tabs, in the room the bar grows while you swipe: a dot for each tab. */
+const Place = ({ position, count, shown, rise }: {
+  position: number; count: number; shown: Animated.Value; rise: Animated.AnimatedInterpolation<number>
+}) => (
+  <Animated.View style={[styles.place, { opacity: shown, transform: [{ translateY: rise }] }]} pointerEvents="none">
+    {count > MAX_DOTS ? (
+      <Text style={styles.placeText}>{position + 1} of {count}</Text>
+    ) : (
+      Array.from({ length: count }, (_, i) => <View key={i} style={[styles.dot, i === position && styles.dotOn]} />)
+    )}
+  </Animated.View>
+)
 
 const CHARCOAL: Rgb = [44, 44, 48]
 const PRIVATE: Rgb = [88, 64, 170]
@@ -198,8 +230,9 @@ const TabStack = ({ tab, behind, frontRef }: { tab: Tab; behind?: Tab; frontRef:
 
 const styles = StyleSheet.create({
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: TOP, paddingHorizontal: 22 },
+  // GROW taller than the bar, reaching up above it, and moved down by GROW until you swipe.
   panel: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    position: 'absolute', top: -GROW, left: 0, right: 0, bottom: 0,
     overflow: 'hidden',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.14)'
@@ -218,6 +251,13 @@ const styles = StyleSheet.create({
   behind: { overflow: 'hidden', backgroundColor: '#2c2c35', transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
   front: { transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }] },
   frontBox: { overflow: 'hidden' },
+  place: {
+    position: 'absolute', top: -GROW, left: 0, right: 0, height: GROW + 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
+  dotOn: { width: 18, backgroundColor: '#fff' },
+  placeText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   badge: {
     position: 'absolute', right: 4, bottom: -2, width: 18, height: 18, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#5840aa',
