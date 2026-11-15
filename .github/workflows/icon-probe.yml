@@ -1,0 +1,83 @@
+name: App icon check
+
+# Runs Apple's asset compiler (actool) on the app's Liquid Glass icon (mobile/assets/Tabscape.icon)
+# and on a few variations of it, on the same kind of Mac the builds use, to see what it can and
+# can't compile. Each variation's result is printed; the run itself never fails.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Variations of the icon
+        run: |
+          set +e
+          xcodebuild -version
+          ls /Applications | grep -i xcode
+          W="$RUNNER_TEMP/icons"
+          mkdir -p "$W"
+          cp -R mobile/assets/Tabscape.icon "$W/ours.icon"
+
+          mkdir -p "$W/bare.icon"
+          echo '{}' > "$W/bare.icon/icon.json"
+
+          # Only the moon (no stars group).
+          cp -R mobile/assets/Tabscape.icon "$W/moon.icon"
+          python3 - "$W/moon.icon/icon.json" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d['groups'] = d['groups'][:1]
+          json.dump(d, open(p, 'w'), indent=2)
+          PY
+
+          # Simpler: one solid fill, no colour-space key, no specializations, layers with glass/hidden.
+          cp -R mobile/assets/Tabscape.icon "$W/simple.icon"
+          python3 - "$W/simple.icon/icon.json" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d.pop('color-space-for-untagged-svg-colors', None)
+          d.pop('fill-specializations', None)
+          d['fill'] = {'automatic-gradient': 'extended-srgb:0.29020,0.22745,0.61961,1.00000'}
+          d['groups'] = d['groups'][:1]
+          for g in d['groups']:
+              for l in g['layers']:
+                  l.pop('fill-specializations', None)
+                  l['fill'] = {'solid': 'extended-srgb:1.00000,0.95686,0.83922,1.00000'}
+                  l['hidden'] = False
+          json.dump(d, open(p, 'w'), indent=2)
+          PY
+
+          # The same, with the moon as a PNG instead of an SVG.
+          cp -R "$W/simple.icon" "$W/png.icon"
+          sips -s format png mobile/assets/app-icons/midnight-dark.png --out "$W/png.icon/Assets/moon.png" >/dev/null
+          python3 - "$W/png.icon/icon.json" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d['groups'][0]['layers'][0]['image-name'] = 'moon.png'
+          json.dump(d, open(p, 'w'), indent=2)
+          PY
+
+          for name in bare ours moon simple png; do
+            out="$W/out-$name"
+            mkdir -p "$out"
+            echo "::group::$name"
+            cat "$W/$name.icon/icon.json"
+            xcrun actool "$W/$name.icon" --compile "$out" --platform iphoneos --minimum-deployment-target 16.4 \
+              --app-icon "$name" --output-partial-info-plist "$out/info.plist" --output-format human-readable-text </dev/null
+            echo "RESULT $name: exit $?"
+            ls "$out"
+            echo "::endgroup::"
+            echo "RESULT $name: exit code above"
+          done
