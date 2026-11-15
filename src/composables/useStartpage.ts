@@ -34,6 +34,12 @@ const SYNC_PREF_KEY = 'startpage_sync'
 const PRESYNC_KEY = 'startpage_presync_backup'
 /** How long to gather edits before pushing them: typing would otherwise exceed Chrome's write rate. */
 const SYNC_DELAY_MS = 1500
+/**
+ * This device's links, pages and settings as they were before sync with a phone (or computer)
+ * first replaced them, so they can always be put back. Kept until put back or dismissed; a later
+ * replacement doesn't overwrite it, so it's always the copy from before syncing changed anything.
+ */
+const RELAY_BACKUP_KEY = 'startpage_relay_backup'
 /** The pages sections are spread across. Synced, like the sections. */
 const PAGES_KEY = 'startpage_pages'
 /** People's own link images, by link id. Kept on this computer only: they'd overflow sync's small items. */
@@ -181,7 +187,15 @@ const state = reactive({
   relay: {
     paired: isPaired(),
     status: 'idle' as 'idle' | 'syncing' | 'synced' | 'error',
-    message: ''
+    message: '',
+    /** When sync replaced this device's links, if they can still be put back. */
+    backupAt: (() => {
+      try {
+        return (JSON.parse(getRaw(RELAY_BACKUP_KEY) ?? 'null') as { at?: number } | null)?.at ?? null
+      } catch {
+        return null
+      }
+    })()
   }
 })
 log('loaded', state.sections.length, 'sections')
@@ -256,10 +270,38 @@ const scheduleRelay = () => {
   relayTimer = setTimeout(() => relayPush(), RELAY_DELAY_MS)
 }
 
-/** Takes the group's copy, and passes it on to Chrome's sync too if that's on. */
+/**
+ * Takes the group's copy, and passes it on to Chrome's sync too if that's on. Before it first
+ * replaces this device's links, they're kept, so they can be put back (Sync & backup).
+ */
 const applyFromRelay = (remote: Snapshot) => {
+  const incoming = cleanSections(remote.sections)
+  const changesLinks = !!incoming && JSON.stringify(incoming) !== JSON.stringify(state.sections)
+  if (changesLinks && !getRaw(RELAY_BACKUP_KEY)) {
+    const at = Date.now()
+    setRaw(RELAY_BACKUP_KEY, JSON.stringify({ at, sections: state.sections, pages: state.pages, settings: state.settings }))
+    state.relay.backupAt = at
+  }
   applyRemote(remote)
   if (state.sync.enabled) pushNow()
+}
+
+/** Puts back this device's links from before sync replaced them; they then go to the other devices too. */
+const restoreRelayBackup = () => {
+  const backup = parse(getRaw(RELAY_BACKUP_KEY)) as { sections?: unknown; pages?: unknown; settings?: unknown } | undefined
+  const sections = cleanSections(backup?.sections)
+  if (!backup || !sections) return
+  state.sections = sections
+  state.pages = cleanPages(backup.pages)
+  Object.assign(state.settings, cleanSettings(backup.settings))
+  setRaw(RELAY_BACKUP_KEY, null)
+  state.relay.backupAt = null
+}
+
+/** Keeps the synced links: the copy from before is let go. */
+const dismissRelayBackup = () => {
+  setRaw(RELAY_BACKUP_KEY, null)
+  state.relay.backupAt = null
 }
 
 /** Lines this device up with the group: takes a newer copy, or sends ours if it's the newer one. */
@@ -430,11 +472,20 @@ storeReady.then(pruneIcons)
  * finds the links there when it joins. Returns the link for the QR code.
  */
 const connectPhone = async () => {
-  if (!state.relay.paired) {
+  const fresh = !state.relay.paired
+  if (fresh) {
     startPairing()
     state.relay.paired = true
   }
   await relayPush()
+  // Its copy didn't reach the relay: no code, since a phone joining would find nothing there.
+  if (state.relay.status === 'error') {
+    if (fresh) {
+      leavePairing()
+      state.relay.paired = false
+    }
+    return null
+  }
   return pairingLink()
 }
 
@@ -448,20 +499,18 @@ const joinGroup = async (secret: string) => {
   state.relay.status = 'syncing'
   try {
     const remote = await readRemote(true)
-    if (remote) {
-      if (!getRaw(PRESYNC_KEY)) {
-        setRaw(PRESYNC_KEY, lastWritten[SECTIONS_KEY] ?? JSON.stringify(state.sections))
-        state.sync.canRestore = true
-      }
-      applyFromRelay(remote)
-    } else {
-      await relayPush()
-    }
+    // Nothing there to take (or nothing readable): joining fails, and nothing of this device's is
+    // sent, so it can never overwrite the computer's links.
+    if (!remote) throw new Error("the computer's links weren't at the relay")
+    applyFromRelay(remote)
     state.relay.status = 'synced'
     state.relay.message = ''
     return true
   } catch (e) {
-    relayFailed(e)
+    leavePairing()
+    state.relay.paired = false
+    state.relay.status = 'idle'
+    console.warn("[tabscape] Couldn't join the computer's sync", e)
     return false
   }
 }
@@ -653,6 +702,7 @@ export const useStartpage = () => {
     exportData, importData, resetLinks, resetSettings,
     completeWelcome, setSyncEnabled, restorePreSync,
     connectPhone, disconnectPhone, pairingLink, syncWithPhoneNow: relayReconcile,
+    restoreRelayBackup, dismissRelayBackup,
     addSortedBookmarks, addPage, removePage, setLinkIcon
   }
 }

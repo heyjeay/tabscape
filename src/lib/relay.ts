@@ -135,6 +135,9 @@ export const readRemote = async (always = false): Promise<Snapshot | null> => {
   if (!response.ok) throw new RelayUnreachable(`relay answered ${response.status}`)
   const body = (await response.json()) as { rev: number; data: string }
   const snapshot = open(body.data, key) as Snapshot | null
+  // Can't be opened (not this group's key, or damaged): an error, never "nothing there", so
+  // nothing is ever sent over a copy this device couldn't read.
+  if (!snapshot || !Array.isArray(snapshot.sections)) throw new RelayUnreachable("the group's copy couldn't be opened")
   // Remember the revision now: what it holds is either taken in, or older than ours and about to be replaced.
   savePairing({ ...pairing, rev: body.rev })
   log('relay: read revision', body.rev)
@@ -166,8 +169,10 @@ export const pushRemote = async (snapshot: Snapshot): Promise<{ newer: Snapshot 
     return { newer: null }
   }
   if (response.status === 409 && typeof body.rev === 'number' && body.data) {
+    const newer = open(body.data, key) as Snapshot | null
+    if (!newer || !Array.isArray(newer.sections)) throw new RelayUnreachable("the group's copy couldn't be opened")
     savePairing({ ...pairing, rev: body.rev })
-    return { newer: open(body.data, key) as Snapshot | null }
+    return { newer }
   }
   throw new RelayUnreachable(`relay answered ${response.status}`)
 }

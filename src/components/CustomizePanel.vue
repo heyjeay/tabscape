@@ -34,8 +34,11 @@ const POSITIONS: { id: Position; name: string; icon: typeof Check }[] = [
 
 const {
   state, exportData, importData, resetLinks, resetSettings, setSyncEnabled, restorePreSync,
-  connectPhone, disconnectPhone
+  connectPhone, disconnectPhone, restoreRelayBackup, dismissRelayBackup
 } = useStartpage()
+const phoneError = ref('')
+const backupWhen = computed(() =>
+  state.relay.backupAt ? new Date(state.relay.backupAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '')
 
 /**
  * Sync with a phone (lib/relay): this computer shows a QR code, and the iPhone's camera opens
@@ -46,8 +49,10 @@ const phoneCode = ref<string | null>(null)
 const phoneBusy = ref(false)
 const showPhoneCode = async () => {
   phoneBusy.value = true
+  phoneError.value = ''
   const link = await connectPhone()
   phoneBusy.value = false
+  if (!link) phoneError.value = "Couldn't reach sync, so there's no code yet. Check your connection and try again."
   phoneCode.value = link ? renderSVG(link, { border: 2, whiteColor: '#ffffff', blackColor: '#0b0b12' }) : null
 }
 const stopPhoneSync = () => {
@@ -493,6 +498,16 @@ const version = __APP_VERSION__
                     {{ inApp ? 'Your links stay the same here and on your computer.' : 'Your links stay the same here and on your phone.' }}
                   </template>
                 </p>
+                <div v-if="state.relay.backupAt" class="space-y-1.5 rounded-lg bg-amber-400/10 p-2.5 ring-1 ring-amber-300/30">
+                  <p class="text-xs leading-snug text-amber-100/90">
+                    Sync replaced the links that were here on {{ backupWhen }}. You can put them back (they then go to your other devices too).
+                  </p>
+                  <div class="flex gap-3 text-xs">
+                    <button class="font-medium text-amber-200 hover:underline" @click="restoreRelayBackup">Put them back</button>
+                    <button class="text-white/50 hover:text-white" @click="dismissRelayBackup">Keep these</button>
+                  </div>
+                </div>
+                <p v-if="phoneError" class="text-xs text-amber-200/90">{{ phoneError }}</p>
                 <template v-if="inApp">
                   <p v-if="!state.relay.paired" class="text-xs leading-snug text-white/45">
                     In Tabscape on your computer, open Customize, then Sync &amp; backup, then Connect your phone, and point your iPhone's camera at the code it shows.
