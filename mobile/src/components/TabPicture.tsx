@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { hostOf } from '../lib/address'
+import { useIcon } from '../lib/icons'
 import type { Tab } from '../useTabs'
 
 /** Tabscape-style gradients (start, end), for a tab with no picture yet; each site always gets the same. */
@@ -31,36 +32,38 @@ export const TabPicture = ({ tab, letterSize = 40, style }: { tab: Tab; letterSi
   </View>
 )
 
-/**
- * The site's own icon, fetched from the site itself (as the page already did), or its
- * colour and letter when it hasn't one. The start page gets the ✦.
- */
 /** The site's host, or null for the start page or an address that can't be read. */
 const hostFor = (url: string | null) => {
   if (!url) return null
   try {
-    return new URL(url).host || null
+    return new URL(url).hostname || null
   } catch {
     return null
   }
 }
 
+/**
+ * The site's own icon (fetched once and kept on the phone: see lib/icons), or its colour and
+ * letter until it's there, or when it hasn't one. The start page gets the ✦.
+ */
 export const Favicon = ({ tab, size = 22 }: { tab: Tab; size?: number }) => {
   const [failed, setFailed] = useState(false)
   const host = hostFor(tab.url)
+  const icon = useIcon(host)
   const box = { width: size, height: size, borderRadius: size * 0.27 }
-  if (!host || failed) {
+  if (!icon || failed) {
     return (
       <LinearGradient colors={tabColors(tab)} style={[box, styles.center]}>
         <Text style={[styles.letter, { fontSize: size * 0.55 }]}>{tabLetter(tab)}</Text>
       </LinearGradient>
     )
   }
-  return <Image source={{ uri: `https://${host}/favicon.ico` }} style={box} onError={() => setFailed(true)} />
+  return <Image source={{ uri: icon }} style={[box, styles.icon]} onError={() => setFailed(true)} />
 }
 
 const styles = StyleSheet.create({
   picture: { overflow: 'hidden', backgroundColor: '#24242c' },
   center: { alignItems: 'center', justifyContent: 'center' },
-  letter: { color: '#fff', fontWeight: '800' }
+  letter: { color: '#fff', fontWeight: '800' },
+  icon: { backgroundColor: '#fff' }
 })

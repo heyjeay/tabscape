@@ -26,6 +26,7 @@ import { colors, log } from './config'
 import { hostOf } from './lib/address'
 import { parseColor, usableAccent } from './lib/color'
 import { recordVisit } from './lib/history'
+import { iconFor, iconKey, loadSavedIcons, onIcon } from './lib/icons'
 import { parseArticle, readerScript, type Article } from './lib/reader'
 import {
   addSavedPage, clearPendingImport, deliveryScript, loadPendingImport, loadSavedPages, removeDeliveredPages
@@ -280,6 +281,16 @@ export const BrowserScreen = () => {
       })
     }
     if (data.type === 'delivered') return delivered(id, data)
+    // A start page asks for site icons it hasn't got: each is handed over as it's found (once, ever).
+    if (data.type === 'icons' && Array.isArray(data.hosts)) {
+      for (const host of data.hosts.filter((h): h is string => typeof h === 'string').slice(0, 300)) {
+        iconFor(host).then(uri => {
+          webs.get(id)?.inject(`window.tabscapeIcons && window.tabscapeIcons(${JSON.stringify({ [host]: uri })}); true;`)
+        })
+      }
+      log('start page asked for', data.hosts.length, 'icons;', Object.keys(icons).length, 'saved, e.g.', iconKey(String(data.hosts[0] ?? '')))
+      return
+    }
     // The rest is about what you're doing, on the page showing.
     if (id !== currentIdRef.current) return
     if (data.type === 'find') setNotFound(!data.found)
@@ -431,6 +442,31 @@ export const BrowserScreen = () => {
   }
 
   // Tabs not opened in a while are tidied away (as the app opens, and each time it comes back).
+  // Site icons kept on the phone (lib/icons), for start pages to have as they load.
+  const [icons, setIcons] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let live = true
+    loadSavedIcons().then(found => live && setIcons(found))
+    // Icons found in a burst (a start page asking for all of them at once) are passed on together.
+    let found: Record<string, string> = {}
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const stop = onIcon((key, uri) => {
+      if (!uri) return
+      found[key] = uri
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const batch = found
+        found = {}
+        if (live) setIcons(all => ({ ...all, ...batch }))
+      }, 800)
+    })
+    return () => {
+      live = false
+      clearTimeout(timer)
+      stop()
+    }
+  }, [])
+
   // Ad and tracker blocking, as last set (it's on unless switched off in Settings).
   useEffect(() => {
     loadSettings().then(settings => setBlocking(settings.blockTrackers))
@@ -579,6 +615,7 @@ export const BrowserScreen = () => {
                 onNewWindow={url => openTab(url, { private: !!tab.private })}
                 onScroll={(y, contentHeight, viewHeight) => tab.id === currentIdRef.current && onScroll(y, contentHeight, viewHeight)}
                 textSizes={sizesFor(!!tab.private)}
+                icons={icons}
               />
             </View>
           ))}
