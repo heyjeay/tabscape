@@ -33,43 +33,44 @@ jobs:
           mkdir -p "$W/bare.icon"
           echo '{}' > "$W/bare.icon/icon.json"
 
-          # Only the moon (no stars group).
-          cp -R mobile/assets/Tabscape.icon "$W/moon.icon"
-          python3 - "$W/moon.icon/icon.json" <<'PY'
+          # One change at a time, from the moon-only icon (which crashes) toward the simple one (which compiles).
+          mk() {
+            cp -R mobile/assets/Tabscape.icon "$W/$1.icon"
+            python3 - "$W/$1.icon/icon.json" "$2" <<'PY'
           import json, sys
-          p = sys.argv[1]; d = json.load(open(p))
+          p, change = sys.argv[1], sys.argv[2]
+          d = json.load(open(p))
           d['groups'] = d['groups'][:1]
+          layer = d['groups'][0]['layers'][0]
+          sky = d['fill-specializations'][0]['value']
+          for c in change.split(','):
+              if c == 'hidden': layer['hidden'] = False
+              if c == 'nocolorspace': d.pop('color-space-for-untagged-svg-colors', None)
+              if c == 'plainfill': d.pop('fill-specializations'); d['fill'] = sky
+              if c == 'noorientation': (d['fill'] if 'fill' in d else sky).pop('orientation', None)
+              if c == 'autofill': d.pop('fill-specializations', None); d['fill'] = {'automatic-gradient': sky['linear-gradient'][0]}
+              if c == 'layersolid': layer.pop('fill-specializations'); layer['fill'] = {'solid': 'extended-srgb:1.00000,0.95686,0.83922,1.00000'}
+              if c == 'notintgray':
+                  for s in layer.get('fill-specializations', []):
+                      if s.get('appearance') == 'tinted': s['value'] = {'solid': 'extended-srgb:1.00000,1.00000,1.00000,0.95000'}
+              if c == 'opacity': layer['opacity'] = 1; layer['blend-mode'] = 'normal'
+              if c == 'position': d['groups'][0]['position'] = {'scale': 1, 'translation-in-points': [0, 0]}
+              if c == 'stars': pass
           json.dump(d, open(p, 'w'), indent=2)
           PY
+          }
+          mk hidden hidden
+          mk nocolorspace nocolorspace
+          mk plainfill plainfill
+          mk plainfill-noorient plainfill,noorientation
+          mk autofill autofill
+          mk layersolid layersolid
+          mk notintgray notintgray
+          mk allfill autofill,layersolid
+          mk gradient-layersolid plainfill,noorientation,layersolid,hidden
+          mk keep-all-but-orient noorientation,hidden
 
-          # Simpler: one solid fill, no colour-space key, no specializations, layers with glass/hidden.
-          cp -R mobile/assets/Tabscape.icon "$W/simple.icon"
-          python3 - "$W/simple.icon/icon.json" <<'PY'
-          import json, sys
-          p = sys.argv[1]; d = json.load(open(p))
-          d.pop('color-space-for-untagged-svg-colors', None)
-          d.pop('fill-specializations', None)
-          d['fill'] = {'automatic-gradient': 'extended-srgb:0.29020,0.22745,0.61961,1.00000'}
-          d['groups'] = d['groups'][:1]
-          for g in d['groups']:
-              for l in g['layers']:
-                  l.pop('fill-specializations', None)
-                  l['fill'] = {'solid': 'extended-srgb:1.00000,0.95686,0.83922,1.00000'}
-                  l['hidden'] = False
-          json.dump(d, open(p, 'w'), indent=2)
-          PY
-
-          # The same, with the moon as a PNG instead of an SVG.
-          cp -R "$W/simple.icon" "$W/png.icon"
-          sips -s format png mobile/assets/app-icons/midnight-dark.png --out "$W/png.icon/Assets/moon.png" >/dev/null
-          python3 - "$W/png.icon/icon.json" <<'PY'
-          import json, sys
-          p = sys.argv[1]; d = json.load(open(p))
-          d['groups'][0]['layers'][0]['image-name'] = 'moon.png'
-          json.dump(d, open(p, 'w'), indent=2)
-          PY
-
-          for name in bare ours moon simple png; do
+          for name in hidden nocolorspace plainfill plainfill-noorient autofill layersolid notintgray allfill gradient-layersolid keep-all-but-orient; do
             out="$W/out-$name"
             mkdir -p "$out"
             echo "::group::$name"
