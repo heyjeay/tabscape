@@ -89,6 +89,9 @@ export const removeVisit = (kind: Kind, visit: Visit) =>
 
 export const clearVisits = (kind: Kind) => change(kind, () => [])
 
+/** Forgets everything on a list from a time on (ms since 1970); 0 forgets it all. */
+export const clearVisitsSince = (kind: Kind, since: number) => change(kind, all => all.filter(v => v.at < since))
+
 /** Pages you've been to whose address or title has the words in it: for the search screen. */
 export const findInHistory = async (text: string, limit: number) => {
   const words = text.trim().toLowerCase()

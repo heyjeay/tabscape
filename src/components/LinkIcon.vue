@@ -5,6 +5,7 @@ import { useFavicons } from '@/composables/useFavicons'
 import { faviconUrl } from '@/lib/favicons'
 import { gradientCss, type Gradient } from '@/lib/gradients'
 import { hostOf } from '@/lib/autosort'
+import { inApp, siteIconUrls } from '@/lib/inApp'
 import type { Link } from '@/lib/defaults'
 
 /**
@@ -18,12 +19,27 @@ const favicons = useFavicons()
 
 /** An image that failed to load drops to the next choice down. */
 const failed = ref(false)
-watch(() => [props.link.url, state.icons[props.link.id], favicons.enabled.value], () => { failed.value = false })
+/** In the iPhone app: which of the site's own icons is being tried (big one first, then the small one). */
+const appStep = ref(0)
+watch(() => [props.link.url, state.icons[props.link.id], favicons.enabled.value], () => {
+  failed.value = false
+  appStep.value = 0
+})
+
+const appIcons = computed(() => (inApp ? siteIconUrls(props.link.url) : []))
+/** The small tab icon: shown smaller, on a light tile, rather than stretched to fill one. */
+const small = computed(() => inApp && !state.icons[props.link.id] && appStep.value > 0)
+
+const onError = () => {
+  if (inApp && !state.icons[props.link.id] && appStep.value < appIcons.value.length) appStep.value++
+  else failed.value = true
+}
 
 const src = computed(() => {
   if (failed.value) return null
   const own = state.icons[props.link.id]
   if (own) return own
+  if (inApp) return appIcons.value[appStep.value] ?? null
   if (favicons.enabled.value && hostOf(props.link.url)) return faviconUrl(props.link.url, props.size <= 16 ? 32 : 64) // fixed steps, so resizing text doesn't refetch
   return null
 })
@@ -40,8 +56,9 @@ const letter = computed(() => {
     :src="src"
     alt=""
     class="tl-icon shrink-0 rounded-[4px] object-cover"
+    :class="{ 'tl-icon-small': small }"
     :style="{ width: `${size}px`, height: `${size}px` }"
-    @error="failed = true"
+    @error="onError"
   >
   <span
     v-else

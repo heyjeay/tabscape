@@ -10,7 +10,7 @@ import { BottomBar, barSpace, barTravel } from './components/BottomBar'
 import { FindBar, findScript } from './components/FindBar'
 import { Glass } from './components/Glass'
 import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
-import { HistorySheet } from './components/HistorySheet'
+import { HistorySheet, type HistoryKind } from './components/HistorySheet'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
 import { PULL_TO_REFRESH, PullRefresh } from './components/PullRefresh'
@@ -54,7 +54,7 @@ export const BrowserScreen = () => {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
   const { restored, tabs, current, currentId, select, openTab, updateTab, closeTab, closeAll, reopenClosed, archiveOld } = useTabs()
-  const { sizeFor, setSize, sizesFor } = useTextSizes()
+  const { sizeFor, setSize, sizesFor, saved: savedTextSizes, resetSize } = useTextSizes()
   const isPrivate = !!current.private
   /** The tabs of the same kind as the one showing (private or not): what the bar swipes through. */
   const group = tabs.filter(t => !!t.private === isPrivate)
@@ -79,6 +79,10 @@ export const BrowserScreen = () => {
   const [notFound, setNotFound] = useState(false)
   const [notice, setNotice] = useState<{ text: string; info?: boolean } | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  /** Which list History opens on. */
+  const [historyOn, setHistoryOn] = useState<HistoryKind>('history')
+  /** Asked for from Settings: shown once Settings has gone (two sheets can't be up at once). */
+  const historyAfterSettings = useRef<HistoryKind | null>(null)
   const [article, setArticle] = useState<Article | null>(null)
   /** The tab browser is showing private tabs. */
   const [browsingPrivate, setBrowsingPrivate] = useState(false)
@@ -358,12 +362,26 @@ export const BrowserScreen = () => {
     setSearching(true)
   }
 
+  /** A new tab has opened: search comes up over it, unless Auto-Open Keyboard is off. */
+  const searchIfWanted = () => {
+    loadSettings().then(settings => {
+      if (settings.autoKeyboard) search('')
+    })
+  }
+
   /** + : a new tab on the start page, with search up over it. */
   const newTab = () => {
     showBar(true)
     snapshot()
     openTab(null, { private: isPrivate })
-    search('')
+    searchIfWanted()
+  }
+
+  /** Export Data: the open tabs' addresses (not private ones), one a line, to share. */
+  const exportTabs = () => {
+    const urls = tabs.filter(t => t.url && !t.private).map(t => t.url)
+    if (!urls.length) return Alert.alert('No tabs to export', 'Only start pages are open.')
+    Share.share({ message: urls.join('\n') }).catch(() => {})
   }
 
   // ---- The tab browser and its transitions ----
@@ -521,6 +539,7 @@ export const BrowserScreen = () => {
         }}
         onHistory={() => {
           setShowActions(false)
+          setHistoryOn('history')
           setShowHistory(true)
         }}
         textSize={textSize}
@@ -558,7 +577,7 @@ export const BrowserScreen = () => {
           onNewTab={() => {
             openTab(null, { private: browsingPrivate })
             fadeOutTabs()
-            search('')
+            searchIfWanted()
           }}
           onSettings={() => {
             fadeOutTabs()
@@ -577,6 +596,7 @@ export const BrowserScreen = () => {
 
       <HistorySheet
         visible={showHistory}
+        startOn={historyOn}
         onClose={() => setShowHistory(false)}
         onOpen={url => web.current?.load(url)}
         onReopen={visit => {
@@ -590,7 +610,30 @@ export const BrowserScreen = () => {
       {shrink.element}
       {hero.element}
 
-      <SettingsSheet visible={showSettings} onClose={() => setShowSettings(false)} onImportQueued={importQueued} />
+      <SettingsSheet
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onClosed={() => {
+          const kind = historyAfterSettings.current
+          historyAfterSettings.current = null
+          if (kind) {
+            setHistoryOn(kind)
+            setShowHistory(true)
+          }
+        }}
+        onImportQueued={importQueued}
+        onOpenHistory={kind => {
+          historyAfterSettings.current = kind
+          setShowSettings(false)
+        }}
+        onExportTabs={exportTabs}
+        textSizes={savedTextSizes}
+        onResetTextSize={host => {
+          resetSize(host)
+          // The page showing goes back to its normal size straight away, if it's one of them.
+          if (!host || hostOf(current.url) === host) web.current?.inject(textSizeScript(100))
+        }}
+      />
     </KeyboardAvoidingView>
   )
 }

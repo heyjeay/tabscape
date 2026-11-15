@@ -14,3 +14,10 @@ export const colors = {
   dim: 'rgba(255,255,255,0.32)',
   card: '#2a2a33'
 }
+
+/** Where Tabscape lives on the web. */
+export const links = {
+  discord: 'https://discord.gg/T5bF56tvyj',
+  privacy: 'https://heyjeay.github.io/tabscape/#privacy',
+  source: 'https://github.com/heyjeay/tabscape'
+}

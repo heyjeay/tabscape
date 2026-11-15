@@ -5,6 +5,7 @@ import { colors } from '../config'
 import { hostOf, isSearch, toUrl } from '../lib/address'
 import { findInHistory, type Visit } from '../lib/history'
 import { addRecentSearch, clearRecentSearches, fetchSuggestions, loadRecentSearches } from '../lib/searches'
+import { engineOf } from '../lib/engines'
 import { loadSettings } from '../lib/settings'
 import { Glass } from './Glass'
 import { Icon } from './Icon'
@@ -40,6 +41,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Pr
   const [pages, setPages] = useState<Visit[]>([])
   const [recent, setRecent] = useState<string[]>([])
   const [suggest, setSuggest] = useState(true)
+  const [engine, setEngine] = useState(engineOf('google'))
 
   // The page dims (a plain dark layer, so it can fade); the panel moves, never fades.
   const dim = useRef(new Animated.Value(0)).current
@@ -55,7 +57,10 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Pr
       setSuggestions([])
       setPages([])
       loadRecentSearches().then(setRecent)
-      loadSettings().then(settings => setSuggest(settings.suggestions))
+      loadSettings().then(settings => {
+        setSuggest(settings.suggestions)
+        setEngine(engineOf(settings.searchEngine))
+      })
       Animated.timing(dim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
       Animated.spring(drop, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 3 }).start()
     } else if (mounted) {
@@ -94,7 +99,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Pr
     if (!visible || !suggest) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
-      fetchSuggestions(text, controller.signal).then(found => {
+      fetchSuggestions(text, controller.signal, engine.suggest).then(found => {
         if (!controller.signal.aborted) setSuggestions(found)
       })
     }, 200)
@@ -102,12 +107,12 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate }: Pr
       clearTimeout(timer)
       controller.abort()
     }
-  }, [text, visible, suggest])
+  }, [text, visible, suggest, engine])
 
   if (!mounted) return null
 
   const open = (typed: string) => {
-    const url = toUrl(typed)
+    const url = toUrl(typed, engine.search)
     if (!url) return
     if (isSearch(typed) && !isPrivate) addRecentSearch(typed.trim())
     onGo(url)

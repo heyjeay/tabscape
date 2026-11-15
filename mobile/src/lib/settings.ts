@@ -1,9 +1,13 @@
+import type { EngineId } from './engines'
 import { load, save } from './storage'
 
 /** The browser's own settings (the start page keeps its settings itself). */
 export interface BrowserSettings {
-  /** Google suggestions as you type in the search screen. */
+  /** Suggestions from the search engine as you type in the search screen. */
   suggestions: boolean
+  searchEngine: EngineId
+  /** A new tab opens with the keyboard up, ready to search. */
+  autoKeyboard: boolean
   /** Tabs not opened for this many hours are tidied away into the archive, like Arc. 0 is never. */
   archiveAfter: number
   /** Reader text size (points), and whether it's in a book typeface or the system one. */
@@ -12,7 +16,9 @@ export interface BrowserSettings {
 }
 
 const KEY = 'tabscape.settings'
-const DEFAULTS: BrowserSettings = { suggestions: true, archiveAfter: 24, readerSize: 19, readerSerif: true }
+const DEFAULTS: BrowserSettings = {
+  suggestions: true, searchEngine: 'google', autoKeyboard: true, archiveAfter: 24, readerSize: 19, readerSerif: true
+}
 
 /** The choices for tidying away tabs, in hours. */
 export const ARCHIVE_CHOICES: { hours: number; label: string }[] = [

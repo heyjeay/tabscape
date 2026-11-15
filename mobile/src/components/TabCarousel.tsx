@@ -59,9 +59,11 @@ export const TabCarousel = (props: Props) => {
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   // Arc's proportions: cards a little over half the screen wide and about two thirds as tall.
-  const cardWidth = Math.min(width * 0.57, 400)
+  const cardWidth = Math.min(width * 0.7, 420)
   const cardHeight = Math.min(height * 0.65, height - insets.top - insets.bottom - 190 - SWITCH)
-  const side = (width - cardWidth) / 2
+  // Not centred: Arc sets the middle card a little right of centre (its left edge about a fifth of
+  // the way across), so the card before it peeks out on the left and the next one covers its right edge.
+  const side = (width - cardWidth) / 2 + width * 0.06
   // The cards sit centred in the space between the switch and the buttons.
   const area = height - insets.top - SWITCH - (Math.max(insets.bottom, 12) + BUTTONS)
   const cardTop = Math.max(0, (area - (cardHeight + TITLE)) / 2)
@@ -190,7 +192,8 @@ export const TabCarousel = (props: Props) => {
         style={{ position: 'absolute', top: insets.top + SWITCH, left: 0, right: 0, height: area, opacity: appear }}
         // Every card is laid out in the same spot and moved to its own place by animation, so
         // taking one away changes no layout (which would jump): the others glide into the gap.
-        contentContainerStyle={{ width: shown.length * cardWidth + side * 2, height: area }}
+        // Room to bring the last card to the middle, and no further.
+        contentContainerStyle={{ width: Math.max(0, shown.length - 1) * cardWidth + width, height: area }}
         scrollEventThrottle={16}
         onScroll={onScroll}
       >
@@ -311,8 +314,9 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
     handlers.register(tab.id, page)
     return () => handlers.register(tab.id, null)
   }, [])
-  // As in Arc: the next tab overlaps the middle card's right edge a little; the one before it
-  // tucks in behind with about a third of it showing, barely smaller; further ones stack up there.
+  // Measured from Arc: the next tab covers the middle card's right ~30%; the one before it tucks
+  // in behind, its edge showing about a quarter of a card to the left, barely smaller; further
+  // ones stack up there.
   // Built once: rebuilding them on every render makes the native animations stutter.
   const motion = useMemo(() => {
     // How far the view has gone past this card: below 0 it's off to the right, above 0 behind on the left.
@@ -321,9 +325,9 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
     return {
       translateX: Animated.add(
         place,
-        past.interpolate({ inputRange: input, outputRange: [-width * 0.12, 0, width * 0.68, width * 3.5], extrapolate: 'clamp' })
+        past.interpolate({ inputRange: input, outputRange: [-width * 0.29, 0, width * 0.73, width * 3.72], extrapolate: 'clamp' })
       ),
-      scale: past.interpolate({ inputRange: input, outputRange: [1, 1, 0.97, 0.9], extrapolate: 'clamp' }),
+      scale: past.interpolate({ inputRange: input, outputRange: [1, 1, 0.985, 0.95], extrapolate: 'clamp' }),
       titleOpacity: past.interpolate({ inputRange: [-width * 0.6, 0, width * 0.6], outputRange: [0, 1, 0], extrapolate: 'clamp' })
     }
   }, [width, scrollX, place])

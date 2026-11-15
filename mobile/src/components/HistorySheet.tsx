@@ -9,7 +9,8 @@ import { Glass } from './Glass'
 import { Icon } from './Icon'
 import { Favicon } from './TabPicture'
 
-type Kind = 'history' | 'closed' | 'archived'
+export type HistoryKind = 'history' | 'closed' | 'archived'
+type Kind = HistoryKind
 
 const KINDS: { kind: Kind; label: string; empty: string }[] = [
   { kind: 'history', label: 'History', empty: 'Pages you visit show up here. Private tabs never do.' },
@@ -19,6 +20,8 @@ const KINDS: { kind: Kind; label: string; empty: string }[] = [
 
 interface Props {
   visible: boolean
+  /** The list it opens on. */
+  startOn?: Kind
   onClose: () => void
   /** A history entry: opened in the tab showing. */
   onOpen: (url: string) => void
@@ -46,7 +49,7 @@ const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour
  * Where you've been: your history by day, the tabs you've closed, and the tabs tidied away for
  * not being opened in a while. Search any of them; tap one to go back to it.
  */
-export const HistorySheet = ({ visible, onClose, onOpen, onReopen }: Props) => {
+export const HistorySheet = ({ visible, startOn = 'history', onClose, onOpen, onReopen }: Props) => {
   const [kind, setKind] = useState<Kind>('history')
   const [query, setQuery] = useState('')
   const [visits, setVisits] = useState<Visit[]>([])
@@ -96,7 +99,10 @@ export const HistorySheet = ({ visible, onClose, onOpen, onReopen }: Props) => {
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} onShow={() => setQuery('')}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} onShow={() => {
+      setQuery('')
+      setKind(startOn)
+    }}>
       <LinearGradient colors={['#1d1b2e', '#241c30']} style={styles.sheet}>
         <View style={styles.header}>
           <Pressable onPress={clear} hitSlop={10} disabled={!visits.length}>

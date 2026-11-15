@@ -19,13 +19,13 @@ const looksLikeHost = (input: string) => {
   return parts.length > 1 && parts.every(Boolean) && /[a-z]/i.test(parts[parts.length - 1])
 }
 
-/** Turns what was typed into somewhere to go: an address ("apple.com", "https://…") or a Google search. */
-export const toUrl = (text: string): string | null => {
+/** Turns what was typed into somewhere to go: an address ("apple.com", "https://…") or a search on the engine you picked. */
+export const toUrl = (text: string, searchUrl = 'https://www.google.com/search?q='): string | null => {
   const input = text.trim()
   if (!input) return null
   if (isAddress(input)) return input
   if (looksLikeHost(input)) return `${isLocal(hostPart(input)) ? 'http' : 'https'}://${input}`
-  return `https://www.google.com/search?q=${encodeURIComponent(input)}`
+  return `${searchUrl}${encodeURIComponent(input)}`
 }
 
 /** "www.theverge.com" → "theverge.com", for the address pill. */

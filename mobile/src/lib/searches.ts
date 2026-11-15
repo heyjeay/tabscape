@@ -13,13 +13,16 @@ export const addRecentSearch = async (search: string) => {
 
 export const clearRecentSearches = () => save(keys.recentSearches, [])
 
-/** Search suggestions from Google, as you type (what the Google search box itself does). */
-export const fetchSuggestions = async (query: string, signal: AbortSignal): Promise<string[]> => {
+/**
+ * Search suggestions from your search engine, as you type (what its own search box does).
+ * Every engine here answers in the same shape: [what was typed, [suggestions…]].
+ */
+export const fetchSuggestions = async (query: string, signal: AbortSignal, suggestUrl: string): Promise<string[]> => {
   const input = query.trim()
   if (input.length < 2 || isAddress(input)) return []
   try {
     const response = await fetch(
-      `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(input)}`,
+      `${suggestUrl}${encodeURIComponent(input)}`,
       { signal }
     )
     const json = (await response.json()) as [string, string[]]

@@ -48,7 +48,16 @@ export const useTextSizes = () => {
   const both = useMemo(() => ({ ...saved, ...forNow }), [saved, forNow])
   const sizesFor = useCallback((isPrivate?: boolean) => (isPrivate ? both : saved), [saved, both])
 
-  return { sizeFor, setSize, sizesFor }
+  /** Puts a site (or every site, with null) back to its normal text size. */
+  const resetSize = useCallback((host: string | null) => {
+    const next = host ? Object.fromEntries(Object.entries(savedRef.current).filter(([h]) => h !== host)) : {}
+    savedRef.current = next
+    setSaved(next)
+    save(keys.sites, next)
+    setForNow(all => (host ? Object.fromEntries(Object.entries(all).filter(([h]) => h !== host)) : {}))
+  }, [])
+
+  return { sizeFor, setSize, sizesFor, saved, resetSize }
 }
 
 /** The next size up or down. */
