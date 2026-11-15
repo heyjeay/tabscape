@@ -120,6 +120,12 @@ export const BrowserScreen = () => {
   // The tabs with live pages: this one, its neighbours in the swipe row, then the recent ones.
   const groupAt = group.indexOf(current)
   const neighbours = [group[groupAt - 1], group[groupAt + 1]].filter(Boolean).map(t => t.id)
+  // The tab button is a deck, like Arc's: the tab you were on last at the front, the one before behind.
+  const lastOn = recent.current
+    .map(id => tabs.find(t => t.id === id))
+    .filter((t): t is Tab => !!t && t.id !== currentId && !!t.private === isPrivate)
+  const deckFront = lastOn[0] ?? group[groupAt - 1] ?? group[groupAt + 1]
+  const deckBehind = lastOn[1] ?? [group[groupAt - 1], group[groupAt + 1]].find(t => t && t !== deckFront)
   const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
@@ -519,7 +525,7 @@ export const BrowserScreen = () => {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
       <View style={styles.page}>
-        {/* Going back a tab: the page you left, sliding away under the one coming out of the tab button. */}
+        {/* Switching tabs: the page you left, shrinking into a card (or away) under the page coming in. */}
         {swipe.leavingUnder}
         <Animated.View
           ref={page}
@@ -563,6 +569,8 @@ export const BrowserScreen = () => {
             </Animated.View>
           )}
         </Animated.View>
+        {/* Swiping left: the next tab sliding in over this one with your finger. */}
+        {swipe.incoming}
       </View>
       <TopEdge height={insets.top + 18} />
       <PullRefresh pull={pull} pulse={pullPulse} refreshing={refreshing} top={insets.top + 6} />
@@ -598,7 +606,9 @@ export const BrowserScreen = () => {
       ) : (
         <BottomBar
           tab={current}
-          behind={group[group.indexOf(current) - 1] ?? group[group.indexOf(current) + 1]}
+          front={deckFront}
+          behind={deckBehind}
+          hideFront={swipe.flying}
           tabCount={group.length}
           progress={progress}
           loading={nav.loading}

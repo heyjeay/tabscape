@@ -12,8 +12,14 @@ import { TabPicture } from './TabPicture'
 
 interface Props {
   tab: Tab
-  /** Another open tab, for the card behind (the one before this tab, or after it). */
+  /**
+   * The tab button is a deck, like Arc's: its front card is the tab you were on last (the one
+   * you've just left), and behind it another. Without them it shows this tab.
+   */
+  front?: Tab
   behind?: Tab
+  /** A card is flying into or out of the deck: the front card is in the air, not in the button. */
+  hideFront?: boolean
   tabCount: number
   progress: number
   loading: boolean
@@ -53,7 +59,7 @@ export const barTravel = barSpace
  * tab pictures on the left, a wide + in the middle, and ⌃ for everything you can do with the page.
  */
 export const BottomBar = ({
-  tab, behind, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers,
+  tab, front, behind, hideFront, tabCount, progress, loading, bottomInset, hide, stackRef, onTabs, onNewTab, onReopen, onMenu, swipeHandlers,
   swiping, position
 }: Props) => {
   // A private tab's bar is a plain deep violet whatever the site, so you can tell at a glance.
@@ -99,7 +105,7 @@ export const BottomBar = ({
     {swiping && <Place position={position} count={tabCount} />}
     <View style={styles.row}>
       <Pressable onPress={onTabs} accessibilityLabel={`${tabCount} ${tab.private ? 'private ' : ''}tabs`} hitSlop={10} style={styles.side}>
-        <TabStack tab={tab} behind={behind} frontRef={stackRef} />
+        <TabStack tab={front ?? tab} behind={behind} hideFront={hideFront} frontRef={stackRef} />
         {tab.private && (
           <View style={styles.badge} pointerEvents="none">
             <Icon sf="eye.slash.fill" fallback="eye-off" size={10} weight="bold" />
@@ -198,15 +204,17 @@ const ProgressLine = ({ progress, loading, accent }: { progress: number; loading
   )
 }
 
-/** The current tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc. */
-const TabStack = ({ tab, behind, frontRef }: { tab: Tab; behind?: Tab; frontRef: RefObject<ViewRef | null> }) => (
+/** A tab's picture, tilted, with another open tab's picture behind it when there is one, like Arc. */
+const TabStack = ({ tab, behind, hideFront, frontRef }: {
+  tab: Tab; behind?: Tab; hideFront?: boolean; frontRef: RefObject<ViewRef | null>
+}) => (
   <View style={styles.stack}>
     {behind && (
       <View style={[styles.card, styles.behind]}>
         <TabPicture tab={behind} letterSize={13} style={StyleSheet.absoluteFill} />
       </View>
     )}
-    <View ref={frontRef} collapsable={false} style={[styles.card, styles.front, styles.frontBox]}>
+    <View ref={frontRef} collapsable={false} style={[styles.card, styles.front, styles.frontBox, hideFront && styles.gone]}>
       <TabPicture tab={tab} letterSize={13} style={StyleSheet.absoluteFill} />
     </View>
   </View>
@@ -234,6 +242,7 @@ const styles = StyleSheet.create({
   behind: { overflow: 'hidden', backgroundColor: '#2c2c35', transform: [{ translateX: -5 }, { translateY: 3 }, { rotate: '-14deg' }] },
   front: { transform: [{ translateX: 4 }, { translateY: -1 }, { rotate: '10deg' }] },
   frontBox: { overflow: 'hidden' },
+  gone: { opacity: 0 },
   place: { height: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
   dotOn: { width: 18, backgroundColor: '#fff' },
