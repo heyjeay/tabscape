@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
-  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Platform, Share, StyleSheet, Text, View, useWindowDimensions
+  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Linking, Platform, Share, StyleSheet, Text, View, useWindowDimensions
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
@@ -47,6 +47,23 @@ const PULL_LEVELS: [number, Haptics.ImpactFeedbackStyle][] = [
   [74, Haptics.ImpactFeedbackStyle.Heavy],
   [85, Haptics.ImpactFeedbackStyle.Rigid]
 ]
+
+/**
+ * The web address in a link handed to the app: a web link itself, or one inside a tabscape://
+ * link (tabscape://open?url=https%3A%2F%2F… or tabscape://https://…). Anything else, null.
+ */
+const linkToOpen = (link: string | null | undefined): string | null => {
+  if (!link) return null
+  if (/^https?:\/\//i.test(link)) return link
+  const inside = /^tabscape:\/\/(?:open\?url=(.+)|(https?:\/\/.+))$/i.exec(link)
+  if (!inside) return null
+  try {
+    const url = inside[1] ? decodeURIComponent(inside[1]) : inside[2]
+    return /^https?:\/\//i.test(url) ? url : null
+  } catch {
+    return null
+  }
+}
 
 /** How many times a start page that isn't ready yet is offered what's waiting for it. */
 const DELIVERY_TRIES = 10
@@ -474,6 +491,28 @@ export const BrowserScreen = () => {
     setSize(current.url, next, isPrivate)
     web.current?.inject(textSizeScript(next))
   }
+
+  // Links handed to the app open in a new tab: any web link once Tabscape is the default browser
+  // (iOS then sends it every link tapped elsewhere), and tabscape://open?url=… (tabscape://https://…
+  // works too) before then, and for shortcuts.
+  const openLinkRef = useRef((_link: string | null | undefined) => {})
+  openLinkRef.current = link => {
+    const url = linkToOpen(link)
+    if (!url) return
+    log('opening a link handed over:', url)
+    if (tabsOpen) fadeOutTabs()
+    setSearching(false)
+    setShowActions(false)
+    showBar(true)
+    snapshot()
+    openTab(url, { private: false })
+  }
+  useEffect(() => {
+    if (!restored) return
+    Linking.getInitialURL().then(link => openLinkRef.current(link)).catch(() => {})
+    const watching = Linking.addEventListener('url', ({ url }) => openLinkRef.current(url))
+    return () => watching.remove()
+  }, [restored])
 
   // Tabs not opened in a while are tidied away (as the app opens, and each time it comes back).
   // Site icons kept on the phone (lib/icons), for start pages to have as they load.
