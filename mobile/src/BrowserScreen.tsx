@@ -125,7 +125,13 @@ export const BrowserScreen = () => {
   // The tab button is a deck, like Arc's, of the tabs before this one: the one just before it in
   // front, the one before that behind. Swiping left takes the front card back out (so you can walk
   // back along all your tabs), and swiping right puts this page onto it.
-  const deckFor = () => ({ front: group[groupAt - 1], behind: group[groupAt - 2] })
+  // With two tabs or more there are always two cards (with only one, one): near the start of the
+  // row, where there aren't two tabs before this one, the stack is made up with the nearest others.
+  const deckFor = () => {
+    const front = group[groupAt - 1] ?? current
+    const behind = group[groupAt - 2] ?? [group[groupAt + 1], current].find(t => t && t !== front)
+    return { front, behind }
+  }
   const liveIds = { current: [...new Set([currentId, ...neighbours, ...recent.current])].slice(0, LIVE_TABS) }
   const live = tabs.filter(t => liveIds.current.includes(t.id))
 
@@ -431,7 +437,7 @@ export const BrowserScreen = () => {
     measureDeck: () => measure(stack),
     next: group[groupAt + 1],
     // Back to the tab before this one: the tab button's front card, so the card that comes out of it is the one you saw there.
-    back: deckFor().front,
+    back: group[groupAt - 1],
     // A fresh picture of the page for the card that flies into the tab button, taken as soon as a
     // finger is on the bar so it's ready in time.
     onTouch: () => freshPicture(),
