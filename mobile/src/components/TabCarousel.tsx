@@ -41,6 +41,12 @@ interface Props {
   onSwitch: (isPrivate: boolean) => void
 }
 
+/** How a card to the right of the middle one comes in, once the tab browser has opened. */
+interface Entering {
+  opacity: Animated.Value
+  x: Animated.AnimatedInterpolation<number>
+}
+
 /** What the cards call back with. Made once, so the cards only redraw when they themselves change. */
 interface Handlers {
   select: (id: string, rect: Rect | null) => void
@@ -163,6 +169,20 @@ export const TabCarousel = (props: Props) => {
     }
   }), [scrollX])
 
+  // Opening, this tab's picture flies from the tab button into the middle card, drawn over
+  // everything. The next card overlaps the middle one's right edge in front of it, so while the
+  // picture is in the air (this tab's card is hidden), the cards to the right wait out of sight,
+  // and slide in once it has landed: no card popping in front of it when the flight ends.
+  const flyingIn = hiddenIds.includes(currentId)
+  const entry = useRef(new Animated.Value(flyingIn ? 0 : 1)).current
+  useEffect(() => {
+    if (!flyingIn) Animated.timing(entry, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [flyingIn, entry])
+  const entering = useMemo<Entering>(() => ({
+    opacity: entry,
+    x: entry.interpolate({ inputRange: [0, 1], outputRange: [cardWidth * 0.35, 0] })
+  }), [entry, cardWidth])
+
   const handlers = useMemo<Handlers>(() => ({
     select: (id, rect) => latest.current.onSelect(id, rect),
     register: (id, ref) => latest.current.registerCard(id, ref),
@@ -210,6 +230,7 @@ export const TabCarousel = (props: Props) => {
             hidden={hiddenIds.includes(tab.id)}
             current={tab.id === currentId}
             jumpBack={jumpBack}
+            entering={index > start ? entering : undefined}
             handlers={handlers}
           />
         ))}
@@ -280,7 +301,7 @@ export const TabCarousel = (props: Props) => {
  * the middle slide in behind it, a little smaller, leaving their edges showing. Its place in the
  * row is an animated value too, so when a card before it closes it glides along into the gap.
  */
-const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, width, height, hidden, current, jumpBack, handlers }: {
+const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, width, height, hidden, current, jumpBack, entering, handlers }: {
   tab: Tab
   index: number
   scrollX: Animated.Value
@@ -291,6 +312,8 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
   hidden: boolean
   current: boolean
   jumpBack: number
+  /** To the right of the middle card as the tab browser opens: waits, then slides in. */
+  entering?: Entering
   handlers: Handlers
 }) {
   const page = useRef<ViewRef>(null)
@@ -322,15 +345,16 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
     // How far the view has gone past this card: below 0 it's off to the right, above 0 behind on the left.
     const past = Animated.subtract(scrollX, place)
     const input = [-width, 0, width, width * 4]
+    const along = Animated.add(
+      place,
+      past.interpolate({ inputRange: input, outputRange: [-width * 0.29, 0, width * 0.73, width * 3.72], extrapolate: 'clamp' })
+    )
     return {
-      translateX: Animated.add(
-        place,
-        past.interpolate({ inputRange: input, outputRange: [-width * 0.29, 0, width * 0.73, width * 3.72], extrapolate: 'clamp' })
-      ),
+      translateX: entering ? Animated.add(along, entering.x) : along,
       scale: past.interpolate({ inputRange: input, outputRange: [1, 1, 0.985, 0.95], extrapolate: 'clamp' }),
       titleOpacity: past.interpolate({ inputRange: [-width * 0.6, 0, width * 0.6], outputRange: [0, 1, 0], extrapolate: 'clamp' })
     }
-  }, [width, scrollX, place])
+  }, [width, scrollX, place, entering])
 
   const swipe = useRef(
     PanResponder.create({
@@ -359,6 +383,7 @@ const StackedCard = memo(function StackedCard({ tab, index, scrollX, left, top, 
       {...swipe.panHandlers}
       style={{
         position: 'absolute', left, top, width,
+        opacity: entering?.opacity ?? 1,
         transform: [{ translateX: motion.translateX }, { translateY: lift }, { scale: motion.scale }]
       }}
     >
