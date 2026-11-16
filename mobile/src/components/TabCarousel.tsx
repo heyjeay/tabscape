@@ -89,7 +89,17 @@ export const TabCarousel = (props: Props) => {
 
   // Where it opens: on the current tab. Fixed once it's open; scrolling and closing move it from there.
   const start = useRef(Math.max(0, tabs.findIndex(t => t.id === currentId))).current
+  /** The cards to the right of it as it opens (they slide in once the picture has landed). Fixed, so closing a card never changes which ones these are. */
+  const toTheRight = useRef(new Set(tabs.slice(start + 1).map(t => t.id))).current
   const scrollX = useRef(new Animated.Value(start * cardWidth)).current
+  /**
+   * Where the row has been scrolled to. scrollX follows the scrolling natively, and its own idea
+   * of where it is stays where it began; a card that redraws (as one closes) is drawn from that,
+   * jumping back to where the row was when it opened. So it's brought up to date whenever the
+   * row comes to rest, and before a card closes.
+   */
+  const scrolledTo = useRef(start * cardWidth)
+  const settle = () => scrollX.setValue(scrolledTo.current)
   const scroller = useRef<ComponentRef<typeof Animated.ScrollView>>(null)
   /** The card in the middle right now. */
   const middle = useRef(start)
@@ -127,6 +137,7 @@ export const TabCarousel = (props: Props) => {
   const close = (id: string) => {
     const index = shown.findIndex(t => t.id === id)
     if (index < 0) return
+    settle()
     if (shown.length === 1) {
       // The last card showing: close the ones still waiting too, then this one, and a fresh
       // start page takes their place.
@@ -144,7 +155,11 @@ export const TabCarousel = (props: Props) => {
       // card before it first, then take it away (taking it first would snap the row short).
       middle.current = index - 1
       scroller.current?.scrollTo({ x: (index - 1) * cardWidth, animated: true })
-      setTimeout(() => setGone(all => [...all, id]), 320)
+      setTimeout(() => {
+        scrolledTo.current = (index - 1) * cardWidth
+        settle()
+        setGone(all => [...all, id])
+      }, 320)
       closeLater(id, 700)
       return
     }
@@ -161,7 +176,10 @@ export const TabCarousel = (props: Props) => {
   // A card behind the middle closed: move the view back a place in the same frame as the cards
   // after it, so the middle card stays put.
   useLayoutEffect(() => {
-    if (jumpBack) scroller.current?.scrollTo({ x: middle.current * cardWidth, animated: false })
+    if (!jumpBack) return
+    scrolledTo.current = middle.current * cardWidth
+    scroller.current?.scrollTo({ x: scrolledTo.current, animated: false })
+    settle()
   }, [jumpBack])
 
   // Built once: a new one each render would be unhooked and hooked up again natively.
@@ -180,6 +198,7 @@ export const TabCarousel = (props: Props) => {
     useNativeDriver: true,
     listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const x = event.nativeEvent.contentOffset.x
+      scrolledTo.current = x
       middle.current = Math.min(Math.round(x / widthRef.current), Math.max(0, countRef.current - 1))
       const ready = countRef.current > 0 && x >= (countRef.current - 0.5) * widthRef.current
       if (ready !== clearReadyRef.current) {
@@ -189,10 +208,14 @@ export const TabCarousel = (props: Props) => {
       }
     }
   }), [scrollX])
-  const clearReveal = useMemo(
-    () => scrollX.interpolate({ inputRange: [Math.max(0, count - 1) * cardWidth, count * cardWidth], outputRange: [0, 1], extrapolate: 'clamp' }),
-    [scrollX, count, cardWidth]
-  )
+  // Built once, with where the row ends as a value of its own: rebuilding it as cards close would
+  // redraw it from a stale scroll position.
+  const rowEnd = useRef(new Animated.Value(count * cardWidth)).current
+  useLayoutEffect(() => rowEnd.setValue(count * cardWidth), [rowEnd, count, cardWidth])
+  const { clearReveal, clearScale } = useMemo(() => {
+    const reveal = Animated.subtract(scrollX, rowEnd).interpolate({ inputRange: [-cardWidth, 0], outputRange: [0, 1], extrapolate: 'clamp' })
+    return { clearReveal: reveal, clearScale: reveal.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }
+  }, [scrollX, rowEnd, cardWidth])
 
   // Opening, this tab's picture flies from the tab button into the middle card, drawn over
   // everything. The next card overlaps the middle one's right edge in front of it, so while the
@@ -235,6 +258,8 @@ export const TabCarousel = (props: Props) => {
         contentContainerStyle={{ width: (count ? count * cardWidth : 0) + width, height: area }}
         scrollEventThrottle={16}
         onScroll={onScroll}
+        onScrollEndDrag={settle}
+        onMomentumScrollEnd={settle}
       >
         {shown.map((tab, index) => (
           <StackedCard
@@ -249,7 +274,7 @@ export const TabCarousel = (props: Props) => {
             hidden={hiddenIds.includes(tab.id)}
             current={tab.id === currentId}
             jumpBack={jumpBack}
-            entering={index > start ? entering : undefined}
+            entering={toTheRight.has(tab.id) ? entering : undefined}
             handlers={handlers}
           />
         ))}
@@ -265,7 +290,7 @@ export const TabCarousel = (props: Props) => {
             width: cardWidth,
             height: cardHeight,
             opacity: clearReveal,
-            transform: [{ scale: clearReveal.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }]
+            transform: [{ scale: clearScale }]
           }]}
         >
           <Pressable
