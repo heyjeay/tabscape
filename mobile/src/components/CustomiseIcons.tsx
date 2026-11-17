@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
 import { SymbolView } from 'expo-symbols'
 import { useEffect, useRef, useState } from 'react'
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 import { colors } from '../config'
 import { TINTS, type TileSettings } from '../lib/settings'
 import { Glass } from './Glass'
@@ -23,6 +23,8 @@ interface Props {
   onClose: () => void
   /** Room under the card for the bar. */
   bottom: number
+  /** At most this wide, in the middle (the iPad's); otherwise the width of the screen. */
+  maxWidth?: number
 }
 
 const LOOKS: { id: TileSettings['look']; label: string }[] = [
@@ -74,7 +76,9 @@ const SampleTile = ({ look, tint, shape }: { look: TileSettings['look']; tint: s
   )
 }
 
-export const CustomiseIcons = ({ visible, tiles, onChange, onClose, bottom }: Props) => {
+export const CustomiseIcons = ({ visible, tiles, onChange, onClose, bottom, maxWidth }: Props) => {
+  const { width: screen } = useWindowDimensions()
+  const edge = maxWidth && screen > maxWidth + 20 ? (screen - maxWidth) / 2 : 10
   // Kept on screen while it slides away. It slides rather than fades: Liquid Glass doesn't render at low opacity.
   const [shown, setShown] = useState(visible)
   const slide = useRef(new Animated.Value(0)).current
@@ -103,7 +107,7 @@ export const CustomiseIcons = ({ visible, tiles, onChange, onClose, bottom }: Pr
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close Customise" />
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.place, { bottom: bottom + 10, transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [520, 0] }) }] }]}
+        style={[styles.place, { left: edge, right: edge, bottom: bottom + 10, transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [520, 0] }) }] }]}
       >
         <Glass style={styles.card}>
           <View style={styles.header}>

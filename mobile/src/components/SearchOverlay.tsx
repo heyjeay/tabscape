@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Easing, FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Animated, Easing, FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../config'
 import { hostOf, isSearch, toUrl } from '../lib/address'
@@ -19,6 +19,11 @@ interface Props {
   isPrivate?: boolean
   /** The keyboard comes up at once (Auto-Open Keyboard); otherwise a tap on the field brings it. */
   keyboard?: boolean
+  /**
+   * The iPad's command bar: the panel floats near the top, in the middle of the screen, rather
+   * than riding on the keyboard along the bottom (the iPhone's).
+   */
+  centered?: boolean
 }
 
 /** A row under the field: a page from your history, a suggestion, or a recent search. */
@@ -37,13 +42,20 @@ const PAGES = 2
 /** Rows of suggestions shown at once, so the panel stays above the keyboard. */
 const MAX_ROWS = 5
 
+/** The command bar's rows (iPad), with nothing under it to keep clear of. */
+const CENTERED_ROWS = 8
+
+/** The command bar's widest (points). */
+const CENTERED_WIDTH = 640
+
 /**
  * Search, as in Arc: the page dims, and a glass panel with the field rises with the keyboard
  * and rides on top of it. Suggestions appear under the field as you type; your recent searches
  * when it's empty. A tap on the dimmed page closes it.
  */
-export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyboard = true }: Props) => {
+export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyboard = true, centered = false }: Props) => {
   const insets = useSafeAreaInsets()
+  const screen = useWindowDimensions()
   const [mounted, setMounted] = useState(visible)
   const [text, setText] = useState(initial)
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -58,6 +70,8 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
   const drop = useRef(new Animated.Value(400)).current
   // Built once: rebuilt on every keystroke, it would be unhooked and hooked up again natively.
   const rise = useMemo(() => Animated.add(Animated.multiply(lift, -1), drop), [lift, drop])
+  // The command bar drops a little way into place instead.
+  const settle = useMemo(() => drop.interpolate({ inputRange: [0, 400], outputRange: [0, -28] }), [drop])
 
   useEffect(() => {
     if (visible) {
@@ -73,7 +87,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
       Animated.timing(dim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
       // The same spring as the ⌃ menu (useSlideUp); with the keyboard on its way, straight up to where it'll be.
       Animated.spring(drop, { toValue: 0, useNativeDriver: true, speed: 22, bounciness: 3 }).start()
-      if (keyboard && keyboardHeight) {
+      if (keyboard && keyboardHeight && !centered) {
         liftTo.current = keyboardHeight
         Animated.spring(lift, { toValue: keyboardHeight, useNativeDriver: true, speed: 22, bounciness: 0 }).start()
       }
@@ -141,12 +155,13 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
   }
 
   const showingRecent = !text
+  const most = centered ? CENTERED_ROWS : MAX_ROWS
   const rows: Row[] = showingRecent
-    ? recent.slice(0, MAX_ROWS).map(text => ({ kind: 'recent', text }))
+    ? recent.slice(0, most).map(text => ({ kind: 'recent', text }))
     : [
         ...pages.map(visit => ({ kind: 'page' as const, visit })),
         ...suggestions.map(text => ({ kind: 'suggestion' as const, text }))
-      ].slice(0, MAX_ROWS)
+      ].slice(0, most)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={visible ? 'box-none' : 'none'}>
@@ -155,7 +170,12 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
       </Animated.View>
 
       <Animated.View
-        style={[styles.wrap, { transform: [{ translateY: rise }] }]}
+        style={centered ? [styles.centered, {
+          top: Math.max(insets.top + 56, screen.height * 0.12),
+          width: Math.min(CENTERED_WIDTH, screen.width - 48),
+          left: (screen.width - Math.min(CENTERED_WIDTH, screen.width - 48)) / 2,
+          transform: [{ translateY: settle }]
+        }] : [styles.wrap, { transform: [{ translateY: rise }] }]}
       >
         <Glass style={styles.panel}>
           <Glass style={styles.field}>
@@ -242,6 +262,7 @@ export const SearchOverlay = ({ visible, initial, onGo, onClose, isPrivate, keyb
 const styles = StyleSheet.create({
   dim: { backgroundColor: 'rgba(8,8,14,0.55)' },
   wrap: { position: 'absolute', left: 0, right: 0, bottom: 8, paddingHorizontal: 8 },
+  centered: { position: 'absolute' },
   panel: { borderRadius: 30, padding: 10, gap: 4 },
   field: { height: 54, borderRadius: 27, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18 },
   input: { flex: 1, color: colors.text, fontSize: 18 },

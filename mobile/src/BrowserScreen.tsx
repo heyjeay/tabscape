@@ -2,7 +2,8 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react'
 import {
-  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, Linking, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions
+  ActionSheetIOS, Alert, Animated, AppState, KeyboardAvoidingView, LayoutAnimation, Linking, Platform, Pressable, Share, StyleSheet, Text, View,
+  findNodeHandle, useWindowDimensions
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { captureRef } from 'react-native-view-shot'
@@ -13,6 +14,8 @@ import { measure, useHero, type Rect, type ViewRef } from './components/Hero'
 import { HistorySheet, type HistoryKind } from './components/HistorySheet'
 import { Icon } from './components/Icon'
 import { PageActions } from './components/PageActions'
+import { Sidebar } from './components/pad/Sidebar'
+import { Toolbar } from './components/pad/Toolbar'
 import { PULL_TO_REFRESH, PullRefresh } from './components/PullRefresh'
 import { ReaderView } from './components/ReaderView'
 import { SearchOverlay } from './components/SearchOverlay'
@@ -85,6 +88,15 @@ const pauseScript = `document.querySelectorAll('video, audio').forEach(function 
 const NO_PAGE: PageState = { url: null, title: '', canGoBack: false, canGoForward: false, loading: false }
 
 /**
+ * An iPad: its own layout (a tab sidebar on the left, a toolbar along the top of the page, and the
+ * command bar in the middle of the screen). The iPhone's is untouched by it.
+ */
+const pad = Platform.OS === 'ios' && Platform.isPad
+
+/** Narrower than this (an iPad app side by side with another), the sidebar floats over the page when it's wanted. */
+const DOCKED_FROM = 700
+
+/**
  * The browser: the current tab's page edge to edge, Arc's floating bar over it, and the layers
  * it opens over the page (tab browser, ⌃ sheet, search), which animate the way Arc's do.
  */
@@ -134,6 +146,10 @@ export const BrowserScreen = () => {
   const [article, setArticle] = useState<Article | null>(null)
   /** The tab browser is showing private tabs. */
   const [browsingPrivate, setBrowsingPrivate] = useState(false)
+  /** iPad: the sidebar is wanted beside the page (it stays put until hidden). */
+  const [sidebarDocked, setSidebarDocked] = useState(true)
+  /** iPad, side by side with another app: the sidebar floating over the page. */
+  const [sidebarFloating, setSidebarFloating] = useState(false)
   const deliveryTries = useRef(0)
   const currentIdRef = useRef(currentId)
   currentIdRef.current = currentId
@@ -773,6 +789,328 @@ export const BrowserScreen = () => {
     })
   }
 
+  /** A short message, floating this far up from the bottom. */
+  const noticeAt = (bottom: number) => notice && (
+    <Animated.View
+      pointerEvents={notice.action ? 'box-none' : 'none'}
+      style={[styles.notice, {
+        bottom,
+        transform: [{ translateY: noticeSlide.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) }]
+      }]}
+    >
+      <Pressable disabled={!notice.action} onPress={notice.action} accessibilityRole={notice.action ? 'button' : undefined}>
+        <Glass style={styles.noticePill}>
+          <Icon
+            sf={notice.action ? 'arrow.clockwise.circle.fill' : notice.info ? 'info.circle.fill' : 'checkmark.circle.fill'}
+            fallback={notice.action ? 'refresh-circle' : notice.info ? 'information-circle' : 'checkmark-circle'}
+            size={20}
+          />
+          <Text style={styles.noticeText} numberOfLines={1}>{notice.text}</Text>
+        </Glass>
+      </Pressable>
+    </Animated.View>
+  )
+
+  const historyAndReader = (
+    <>
+      <HistorySheet
+        visible={showHistory}
+        startOn={historyOn}
+        onClose={() => setShowHistory(false)}
+        onOpen={url => web.current?.load(url)}
+        onReopen={visit => {
+          snapshot()
+          openTab(visit.url, { title: visit.title })
+        }}
+      />
+      <ReaderView article={article} onClose={() => setArticle(null)} />
+    </>
+  )
+
+  const settingsSheet = (
+    <SettingsSheet
+      visible={showSettings}
+      onClose={() => setShowSettings(false)}
+      onClosed={() => {
+        if (customiseAfterSettings.current) {
+          customiseAfterSettings.current = false
+          customise()
+        }
+        const kind = historyAfterSettings.current
+        historyAfterSettings.current = null
+        if (kind) {
+          setHistoryOn(kind)
+          setShowHistory(true)
+        }
+      }}
+      onImportQueued={importQueued}
+      onOpenHistory={kind => {
+        historyAfterSettings.current = kind
+        setShowSettings(false)
+      }}
+      onExportTabs={exportTabs}
+      onBlockingChanged={() => web.current?.reload()}
+      onCustomiseIcons={() => {
+        customiseAfterSettings.current = true
+        setShowSettings(false)
+      }}
+      textSizes={savedTextSizes}
+      onResetTextSize={host => {
+        resetSize(host)
+        // The page showing goes back to its normal size straight away, if it's one of them.
+        if (!host || hostOf(current.url) === host) web.current?.inject(textSizeScript(100))
+      }}
+    />
+  )
+
+  /** The bar's room under the pages (the iPhone's); the iPad's pages have nothing under them. */
+  const pageBottom = pad || finding ? 0 : barRoom - insets.bottom
+  /** Every live page (only the one showing is drawn), and the picture standing in for one still loading: in either layout. */
+  const livePages = (
+    <>
+      {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first.
+          The live pages are all here; only the one showing is drawn. */}
+      {restored && live.map(tab => (
+        <View
+          key={tab.id}
+          // How the native side tells which tab's page is which (to slow down the ones out of sight).
+          testID={`tabscape-page:${tab.id}`}
+          // Always a real view of its own (never folded into its parent), so showing and
+          // hiding it never moves the page inside, which would load it again.
+          collapsable={false}
+          style={[StyleSheet.absoluteFill, tab.id === currentId ? styles.shown : styles.hidden]}
+          pointerEvents={tab.id === currentId ? 'auto' : 'none'}
+          accessibilityElementsHidden={tab.id !== currentId}
+          importantForAccessibility={tab.id === currentId ? 'auto' : 'no-hide-descendants'}
+        >
+          <TabWebView
+            ref={handle => {
+              if (handle) webs.set(tab.id, handle)
+              else webs.delete(tab.id)
+            }}
+            tab={tab}
+            showing={tab.id === currentId}
+            bottomInset={pageBottom}
+            onState={state => onState(tab.id, state)}
+            onProgress={value => tab.id === currentIdRef.current && setProgress(value)}
+            onStartPageLoaded={() => deliver(tab.id)}
+            onMessage={data => onMessage(tab.id, data)}
+            onNewWindow={url => openTab(url, { private: !!tab.private })}
+            onScroll={(y, contentHeight, viewHeight) => tab.id === currentIdRef.current && onScroll(y, contentHeight, viewHeight)}
+            textSizes={sizesFor(!!tab.private)}
+            icons={icons}
+            tiles={tilesAtStart}
+          />
+        </View>
+      ))}
+      {cover && cover.id === currentId && (
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: coverFade }]}>
+          <TabPicture tab={cover} letterSize={72} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+      )}
+    </>
+  )
+
+  // ---- The iPad's layout ----
+
+  const shareButton = useRef<ComponentRef<typeof View>>(null)
+  const menuButton = useRef<ComponentRef<typeof View>>(null)
+  /** Wide enough for the sidebar to sit beside the page (not an app squeezed in beside another). */
+  const docked = width >= DOCKED_FROM
+  const toggleSidebar = () => {
+    if (!docked) return setSidebarFloating(open => !open)
+    LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'))
+    setSidebarDocked(open => !open)
+  }
+  /** Where a popover points from: the button that opened it. */
+  const anchorOf = (button: RefObject<ComponentRef<typeof View> | null>) => (button.current ? (findNodeHandle(button.current) ?? undefined) : undefined)
+  /** A floating sidebar gets out of the way once you've picked something in it. */
+  const doneWithSidebar = () => {
+    if (!docked) setSidebarFloating(false)
+  }
+
+  /** The dots under the sidebar: over to the other space, on the tab you were on there last (or a start page). */
+  const switchSpace = (toPrivate: boolean) => {
+    if (toPrivate === isPrivate) return
+    const there = tabs.filter(t => !!t.private === toPrivate)
+    const last = there.reduce<Tab | undefined>((best, t) => (!best || (t.lastSeen ?? 0) > (best.lastSeen ?? 0) ? t : best), undefined)
+    if (last) select(last.id)
+    else openTab(null, { private: toPrivate })
+  }
+
+  /** Clear, at the top of the sidebar: every tab in this space goes (hold + to bring the last one back). */
+  const clearSpace = () => {
+    const count = group.length
+    const kind = isPrivate ? 'private tabs' : 'tabs'
+    Alert.alert(`Close all ${count} ${kind}?`, undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Close All',
+        style: 'destructive',
+        onPress: () => {
+          closeAll(isPrivate)
+          // Tabs stay in their own space: a start page there, rather than landing in private tabs.
+          if (!isPrivate && tabs.some(t => t.private)) openTab(null)
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+          setNotice({ text: `Closed ${count} ${kind}. Hold + to reopen`, info: true })
+        }
+      }
+    ])
+  }
+
+  /** ⋯ in the toolbar: what the iPhone's ⌃ sheet has, as an iPad menu pointing from the button. */
+  const padMenu = () => {
+    type Choice = [string, () => void]
+    const choices: Choice[] = []
+    if (current.url) {
+      choices.push(
+        ['Find on Page', () => setFinding(true)],
+        ['Reader', () => web.current?.inject(readerScript)]
+      )
+    }
+    choices.push(
+      [`Larger Text (${textSize}%)`, () => changeTextSize(true)],
+      ['Smaller Text', () => changeTextSize(false)]
+    )
+    if (current.url) {
+      const url = current.url
+      choices.push(
+        ['Add to Tabscape', addToTabscape],
+        ['Copy Link', () => {
+          Clipboard.setStringAsync(url).then(() => setNotice({ text: 'Link copied' })).catch(() => {})
+        }]
+      )
+    }
+    choices.push(
+      ['History', () => {
+        setHistoryOn('history')
+        setShowHistory(true)
+      }],
+      ['Settings', () => setShowSettings(true)]
+    )
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...choices.map(([label]) => label), 'Cancel'],
+        cancelButtonIndex: choices.length,
+        anchor: anchorOf(menuButton),
+        userInterfaceStyle: 'dark'
+      },
+      index => choices[index]?.[1]()
+    )
+  }
+
+  if (pad) {
+    const shown = docked ? sidebarDocked : sidebarFloating
+    const backdrop = isPrivate ? PAD_PRIVATE : PAD_BACKDROP
+    const sidebar = (
+      <Sidebar
+        tabs={group}
+        currentId={currentId}
+        isPrivate={isPrivate}
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        onSelect={id => {
+          select(id)
+          doneWithSidebar()
+        }}
+        onClose={closeTab}
+        onClear={clearSpace}
+        onNewTab={() => {
+          doneWithSidebar()
+          newTab()
+        }}
+        onReopen={reopen}
+        onHome={() => {
+          doneWithSidebar()
+          goHome(isPrivate)
+        }}
+        onSettings={() => setShowSettings(true)}
+        onHistory={() => {
+          setHistoryOn('history')
+          setShowHistory(true)
+        }}
+        onSpace={switchSpace}
+        onHide={toggleSidebar}
+      />
+    )
+    return (
+      <KeyboardAvoidingView style={[styles.screen, { backgroundColor: backdrop }]} behavior="padding" enabled={finding}>
+        <View style={padStyles.row}>
+          {docked && sidebarDocked && sidebar}
+          <View
+            style={[padStyles.card, {
+              marginTop: insets.top + 6,
+              marginBottom: Math.max(insets.bottom, 8),
+              marginLeft: docked && sidebarDocked ? 0 : 8
+            }]}
+          >
+            <Toolbar
+              url={current.url}
+              canGoBack={nav.canGoBack}
+              canGoForward={nav.canGoForward}
+              loading={nav.loading}
+              progress={progress}
+              isPrivate={isPrivate}
+              sidebarHidden={!shown}
+              onSidebar={toggleSidebar}
+              onBack={() => web.current?.goBack()}
+              onForward={() => web.current?.goForward()}
+              onReloadOrStop={() => (nav.loading ? web.current?.stopLoading() : web.current?.reload())}
+              onAddress={() => search(current.url ?? '')}
+              onShare={() => {
+                if (current.url) Share.share({ url: current.url }, { anchor: anchorOf(shareButton) }).catch(() => {})
+              }}
+              onMenu={padMenu}
+              shareRef={shareButton}
+              menuRef={menuButton}
+            />
+            <View ref={page} collapsable={false} style={styles.live}>
+              {livePages}
+            </View>
+            {finding && (
+              <FindBar
+                notFound={notFound}
+                onFind={(query, backwards) => web.current?.inject(findScript(query, backwards))}
+                onTyping={() => setNotFound(false)}
+                onDone={() => setFinding(false)}
+              />
+            )}
+          </View>
+        </View>
+
+        {/* Side by side with another app: the sidebar floats over the page, and goes once you've picked. */}
+        {!docked && sidebarFloating && (
+          <View style={StyleSheet.absoluteFill}>
+            <Pressable style={[StyleSheet.absoluteFill, padStyles.scrim]} onPress={() => setSidebarFloating(false)} accessibilityLabel="Hide sidebar" />
+            <View style={[padStyles.floating, { backgroundColor: backdrop }]}>{sidebar}</View>
+          </View>
+        )}
+
+        <CustomiseIcons
+          visible={customising}
+          tiles={tiles}
+          onChange={changeTiles}
+          onClose={() => setCustomising(false)}
+          bottom={Math.max(insets.bottom, 8)}
+          maxWidth={460}
+        />
+        {noticeAt(Math.max(insets.bottom, 8) + 20)}
+
+        <SearchOverlay
+          visible={searching}
+          initial={searchFrom}
+          onGo={go}
+          onClose={() => setSearching(false)}
+          isPrivate={searchFor.current.newTab ? searchFor.current.private : isPrivate}
+          keyboard
+          centered
+        />
+        {historyAndReader}
+        {settingsSheet}
+      </KeyboardAvoidingView>
+    )
+  }
+
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} enabled={finding}>
       <View style={styles.page}>
@@ -783,46 +1121,7 @@ export const BrowserScreen = () => {
           collapsable={false}
           style={[styles.live, swipe.pageStyle, swipe.moving && styles.card]}
         >
-          {/* Not until last launch's tabs are back, so a throwaway start page isn't loaded first.
-              The live pages are all here; only the one showing is drawn. */}
-          {restored && live.map(tab => (
-            <View
-              key={tab.id}
-              // How the native side tells which tab's page is which (to slow down the ones out of sight).
-              testID={`tabscape-page:${tab.id}`}
-              // Always a real view of its own (never folded into its parent), so showing and
-              // hiding it never moves the page inside, which would load it again.
-              collapsable={false}
-              style={[StyleSheet.absoluteFill, tab.id === currentId ? styles.shown : styles.hidden]}
-              pointerEvents={tab.id === currentId ? 'auto' : 'none'}
-              accessibilityElementsHidden={tab.id !== currentId}
-              importantForAccessibility={tab.id === currentId ? 'auto' : 'no-hide-descendants'}
-            >
-              <TabWebView
-                ref={handle => {
-                  if (handle) webs.set(tab.id, handle)
-                  else webs.delete(tab.id)
-                }}
-                tab={tab}
-                showing={tab.id === currentId}
-                bottomInset={finding ? 0 : barRoom - insets.bottom}
-                onState={state => onState(tab.id, state)}
-                onProgress={value => tab.id === currentIdRef.current && setProgress(value)}
-                onStartPageLoaded={() => deliver(tab.id)}
-                onMessage={data => onMessage(tab.id, data)}
-                onNewWindow={url => openTab(url, { private: !!tab.private })}
-                onScroll={(y, contentHeight, viewHeight) => tab.id === currentIdRef.current && onScroll(y, contentHeight, viewHeight)}
-                textSizes={sizesFor(!!tab.private)}
-                icons={icons}
-                tiles={tilesAtStart}
-              />
-            </View>
-          ))}
-          {cover && cover.id === currentId && (
-            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: coverFade }]}>
-              <TabPicture tab={cover} letterSize={72} style={StyleSheet.absoluteFill} />
-            </Animated.View>
-          )}
+          {livePages}
         </Animated.View>
         {/* While you drag along the bar: the tabs either side, beside the page. */}
         {swipe.beside}
@@ -832,26 +1131,7 @@ export const BrowserScreen = () => {
 
       <CustomiseIcons visible={customising} tiles={tiles} onChange={changeTiles} onClose={() => setCustomising(false)} bottom={barRoom} />
 
-      {notice && (
-        <Animated.View
-          pointerEvents={notice.action ? 'box-none' : 'none'}
-          style={[styles.notice, {
-            bottom: barRoom + 8,
-            transform: [{ translateY: noticeSlide.interpolate({ inputRange: [0, 1], outputRange: [140, 0] }) }]
-          }]}
-        >
-          <Pressable disabled={!notice.action} onPress={notice.action} accessibilityRole={notice.action ? 'button' : undefined}>
-            <Glass style={styles.noticePill}>
-              <Icon
-                sf={notice.action ? 'arrow.clockwise.circle.fill' : notice.info ? 'info.circle.fill' : 'checkmark.circle.fill'}
-                fallback={notice.action ? 'refresh-circle' : notice.info ? 'information-circle' : 'checkmark-circle'}
-                size={20}
-              />
-              <Text style={styles.noticeText} numberOfLines={1}>{notice.text}</Text>
-            </Glass>
-          </Pressable>
-        </Animated.View>
-      )}
+      {noticeAt(barRoom + 8)}
 
       {finding ? (
         <View style={{ paddingBottom: insets.bottom, backgroundColor: colors.background }}>
@@ -978,58 +1258,31 @@ export const BrowserScreen = () => {
         keyboard={searchKeyboard}
       />
 
-      <HistorySheet
-        visible={showHistory}
-        startOn={historyOn}
-        onClose={() => setShowHistory(false)}
-        onOpen={url => web.current?.load(url)}
-        onReopen={visit => {
-          snapshot()
-          openTab(visit.url, { title: visit.title })
-        }}
-      />
-      <ReaderView article={article} onClose={() => setArticle(null)} />
+      {historyAndReader}
 
       {/* The flying tab pictures, above everything else. */}
       {shrink.element}
       {hero.element}
 
-      <SettingsSheet
-        visible={showSettings}
-        onClose={() => setShowSettings(false)}
-        onClosed={() => {
-          if (customiseAfterSettings.current) {
-            customiseAfterSettings.current = false
-            customise()
-          }
-          const kind = historyAfterSettings.current
-          historyAfterSettings.current = null
-          if (kind) {
-            setHistoryOn(kind)
-            setShowHistory(true)
-          }
-        }}
-        onImportQueued={importQueued}
-        onOpenHistory={kind => {
-          historyAfterSettings.current = kind
-          setShowSettings(false)
-        }}
-        onExportTabs={exportTabs}
-        onBlockingChanged={() => web.current?.reload()}
-        onCustomiseIcons={() => {
-          customiseAfterSettings.current = true
-          setShowSettings(false)
-        }}
-        textSizes={savedTextSizes}
-        onResetTextSize={host => {
-          resetSize(host)
-          // The page showing goes back to its normal size straight away, if it's one of them.
-          if (!host || hostOf(current.url) === host) web.current?.inject(textSizeScript(100))
-        }}
-      />
+      {settingsSheet}
     </KeyboardAvoidingView>
   )
 }
+
+/** Around the iPad's page: the night sky of Tabscape's icon (and a deeper violet for private tabs). */
+const PAD_BACKDROP = '#1a1d33'
+const PAD_PRIVATE = '#251a35'
+
+const padStyles = StyleSheet.create({
+  row: { flex: 1, flexDirection: 'row' },
+  // The page, as a card with rounded corners beside the sidebar.
+  card: { flex: 1, marginRight: 8, borderRadius: 16, overflow: 'hidden', backgroundColor: colors.background },
+  scrim: { backgroundColor: 'rgba(0,0,0,0.35)' },
+  floating: {
+    position: 'absolute', top: 0, bottom: 0, left: 0,
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 6, height: 0 }
+  }
+})
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
