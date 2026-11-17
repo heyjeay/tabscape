@@ -163,6 +163,15 @@ body {
   font-family: 'Google Sans Flex', system-ui, sans-serif;
 }
 
+/*
+ * A visible ring for keyboard users only (:focus-visible, so mouse clicks leave nothing behind).
+ * Fields and inputs keep their own focus style (.field), so they're left out here.
+ */
+:where(a, button, summary):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
 @layer components {
   /** Section titles: the gradient shows through the letters. */
   .gradient-text {
